@@ -1,4 +1,4 @@
-// The header of each terminal, for the tasker layout ({ "header": { "content": { "mod": "tasker" } } }):
+// The header of each terminal, for the taskr layout ({ "header": { "content": { "mod": "taskr" } } }):
 // Herdr draws one copy per pane, with props { pane, terminal }. It says what the terminal is for
 // (its task's title, else its program) and, for an agent, its model, effort and context; then the
 // folder and the agent's state. The buttons split, zoom and close this pane, as Herdr's own header.
@@ -7,13 +7,13 @@ import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, run, panes, terminals, props, home, setShared } from "herdr";
 import { S } from "./strings.js";
-import { shortModel, kilo, tilde } from "./lib/util.js";
+import { shortModel, kilo, tilde, label } from "./lib/util.js";
 import { icon, agentMark, programIcon } from "./lib/ui.js";
 
-// The task a terminal is in: the label tasker puts on the terminals it opens, else its tab.
+// The task a terminal is in: the label taskr puts on the terminals it opens, else its tab.
 export function taskOfPane(data, p, term) {
   const live = data.tasks.filter((t) => !t.deleted && !t.archived);
-  const id = term?.labels?.["tasker.task"];
+  const id = label(term, "task");
   return (id && live.find((t) => t.id === id)) || live.find((t) => (t.tabs ?? []).includes(p.tab)) || null;
 }
 
@@ -47,7 +47,7 @@ export const Pane = {
       .border_b(1).border_color(t.border).text_size(12)
       .on_hover((on, cx) => { if (this.hovered !== on) { this.hovered = on; cx.notify(); } })
       // Focuses the pane; a task's also becomes the selected one, as clicking its row does.
-      .on_click(() => { if (task) setShared("tasker.selected", task.id); run("pane.focus", { pane }); })
+      .on_click(() => { if (task) setShared("taskr.selected", task.id); run("pane.focus", { pane }); })
       .child(programIcon(p.program, 14, t.dim) ?? icon("square-terminal", 13, t.dim))
       .child(div().flex_none().max_w(320).truncate().font_medium().text_color(t.foreground).child(task ? task.title : prog))
       .when(Boolean(meta), (el) => el.child(div().flex_none().max_w(220).truncate().text_size(11.5).text_color(t.muted).child(meta)))

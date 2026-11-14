@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { H, touch } from "herdr";
 import { walk, isElement, text } from "gpui-kit";
-import Tasker from "../mods/tasker/main.js";
+import Taskr from "../mods/taskr/main.js";
 import { world, cx, settle, until, FILE, task } from "./fixture.mjs";
 
 async function mount(props, setup) {
@@ -19,7 +19,7 @@ async function mount(props, setup) {
     const pid = t.foreground?.pid;
     if (pid) H.files.set(`/home/me/.claude/sessions/${pid}.json`, JSON.stringify({ sessionId: `s${pid}`, cwd: "/home/me/dev/app" }));
   }
-  const view = new Tasker();
+  const view = new Taskr();
   const c = cx();
   view.init(props, c);
   await until(() => view.store.loaded);
@@ -58,7 +58,7 @@ const ROLES = [{ role: "sidebar" }, { role: "detail" }, { role: "status" }, { ro
 
 for (const p of ROLES) {
   test(`role ${p.role}: renders and every control works`, async () => {
-    const { view, c } = await mount(p, () => { H.shared["tasker.selected"] = "blocked1"; });
+    const { view, c } = await mount(p, () => { H.shared["taskr.selected"] = "blocked1"; });
     assert.deepEqual(c.errors.map(String), []);
     assert.ok(view.store.loaded);
     render(view);
@@ -71,7 +71,7 @@ for (const p of ROLES) {
 
 test("sidebar: Projects view, done shown, everything folded and unfolded", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "projects";
+  H.shared["taskr.view"] = "projects";
   render(view);
   await settle();
   view.filters.done = true;
@@ -116,14 +116,15 @@ test("task form: saves once even when Enter is pressed twice", async () => {
   assert.equal(data.tasks.filter((t) => t.title === "Brand new").length, 1);
 });
 
-test("delete: the task is marked deleted before the dialog closes", async () => {
+test("delete: the task is gone, and its tabs closed, before the dialog closes", async () => {
   const { view } = await mount({ dialog: "confirm-delete", overlay: "ov1", task: "review1" });
-  H.shared["tasker.selected"] = "review1";
+  H.shared["taskr.selected"] = "review1";
   const del = walk(render(view).tree).find((n) => n.id === "del");
   del.handlers.on_click({}, cx());
   await settle();
-  assert.equal(JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "review1").deleted, true);
-  assert.equal(H.shared["tasker.selected"], null);
+  assert.equal(JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "review1"), undefined);
+  assert.ok(H.runs.some(([n, a]) => n === "tab.close" && a.id === "tb8" && a.confirmed), "its tab (its agent) closes with it");
+  assert.equal(H.shared["taskr.selected"], null);
   assert.deepEqual(H.closed, ["ov1"]);
 });
 
@@ -137,20 +138,20 @@ test("task menu: a status picked there is saved, then the menu closes", async ()
 
 test("sidebar: clicking a task shows it and brings its agent's tab to the front", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "projects";
+  H.shared["taskr.view"] = "projects";
   const row = (id) => walk(render(view).tree).find((n) => n.id === `t-${id}`);
   H.runs.length = 0;
   row("doing1").handlers.on_click({}, cx());
-  assert.equal(H.shared["tasker.selected"], "doing1");
+  assert.equal(H.shared["taskr.selected"], "doing1");
   assert.deepEqual(H.runs.find(([n]) => n === "pane.focus"), ["pane.focus", { pane: "p1" }]);
   assert.ok(!H.runs.some(([n]) => n === "layout.show"), "selecting never opens the task panel");
   H.runs.length = 0;
   row("next1").handlers.on_click({}, cx());
-  assert.equal(H.shared["tasker.selected"], "next1");
+  assert.equal(H.shared["taskr.selected"], "next1");
   assert.ok(!H.runs.some(([n]) => n === "pane.focus"), "a task with no tab only shows");
 });
 
-test("project form: a repository from the picker goes in at once; a folder lists those inside it", async () => {
+test("project form: a repository or a plain folder goes in at once; a folder of repositories lists them, or goes in itself", async () => {
   const { view } = await mount({ dialog: "project", overlay: "ov1" });
   const add = async () => { walk(render(view).tree).find((n) => n.id === "add-folder").handlers.on_click({}, cx()); await settle(25); };
   H.picked = "/home/me/dev/web";
@@ -166,8 +167,18 @@ test("project form: a repository from the picker goes in at once; a folder lists
   // ✕ takes one out.
   walk(render(view).tree).find((n) => n.id === "rx-~/dev/web").handlers.on_click({}, cx());
   assert.deepEqual(view.form.repos, ["~/dev/app"]);
-  // Nothing else is listed: not the repositories tasker knows, not the open spaces.
+  // Nothing else is listed: not the repositories taskr knows, not the open spaces.
   assert.ok(!walk(render(view).tree).some((n) => n.id === "r-/srv/api"));
+  // ~/dev itself can go in too.
+  H.picked = "/home/me/dev";
+  await add();
+  walk(render(view).tree).find((n) => n.id === "found-self").handlers.on_click({}, cx());
+  assert.deepEqual(view.form.repos, ["~/dev/app", "~/dev"]);
+  // A folder that's no repository and holds none (notes): in at once.
+  H.picked = "/home/me/notes";
+  await add();
+  assert.deepEqual(view.form.repos, ["~/dev/app", "~/dev", "~/notes"]);
+  assert.equal(view.found, null);
   delete H.picked;
 });
 
@@ -185,19 +196,19 @@ test("repository menu: remove it from its project, or move it from a list", asyn
   walk(render(view).tree).find((n) => n.id === "r-remove").handlers.on_click({}, cx());
   await settle();
   const d = JSON.parse(H.files.get(FILE()));
-  assert.ok(!d.projects.find((p) => p.id === "pa").repos.some((r) => r.endsWith("dev/app")));
-  assert.ok(d.tasks.filter((x) => x.repo === "~/dev/app").every((x) => x.project), "its tasks keep a project");
+  assert.ok(!d.projects.find((p) => p.id === "pa").folders.some((r) => r.endsWith("dev/app")));
+  assert.ok(d.tasks.filter((x) => x.folder === "~/dev/app").every((x) => x.project), "its tasks keep a project");
   const m = await mount({ dialog: "repo-project", overlay: "ov2", repo: "~/dev/app" });
   walk(render(m.view).tree).find((n) => n.id === "rp-pw").handlers.on_click({}, cx());
   await settle();
   const d2 = JSON.parse(H.files.get(FILE()));
-  assert.ok(d2.projects.find((p) => p.id === "pw").repos.includes("~/dev/app"));
-  assert.ok(d2.tasks.filter((x) => x.repo === "~/dev/app" && !x.deleted).every((x) => x.project === "pw"), "its tasks go with it");
+  assert.ok(d2.projects.find((p) => p.id === "pw").folders.includes("~/dev/app"));
+  assert.ok(d2.tasks.filter((x) => x.folder === "~/dev/app" && !x.deleted).every((x) => x.project === "pw"), "its tasks go with it");
 });
 
 test("a repository dragged onto another project's header moves there", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "projects";
+  H.shared["taskr.view"] = "projects";
   await settle();
   const nodes = walk(render(view).tree);
   const row = nodes.find((n) => n.id === "r:pa:~/dev/app");
@@ -208,8 +219,8 @@ test("a repository dragged onto another project's header moves there", async () 
   header.handlers["on_mouse_up:left"]({}, cx());
   await settle();
   const d = JSON.parse(H.files.get(FILE()));
-  assert.ok(d.projects.find((p) => p.id === "pw").repos.includes("~/dev/app"));
-  assert.ok(!d.projects.find((p) => p.id === "pa").repos.includes("~/dev/app"));
+  assert.ok(d.projects.find((p) => p.id === "pw").folders.includes("~/dev/app"));
+  assert.ok(!d.projects.find((p) => p.id === "pa").folders.includes("~/dev/app"));
 });
 
 test("close a project: one question, then every space of its repos closes", async () => {
@@ -235,12 +246,17 @@ test("close a project: its own space above the repositories closes too", async (
   assert.deepEqual(H.runs.filter(([n]) => n === "space.close").map(([, a]) => a.id).sort(), ["sp2", "sp9"]);
 });
 
-test("a terminal in no task shows its agent's line: model, context, how long", async () => {
+test("an agent's task with no plan shows its agent's line: model, context, how long", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "now";
-  const row = walk(render(view).tree).find((n) => n.id === "u-tb4");
+  H.shared["taskr.view"] = "now";
+  render(view);
+  await until(() => view.store.data.tasks.some((t) => t.auto));
+  await view.store.load();
+  const id = view.store.data.tasks.find((t) => t.auto).id;
+  const row = walk(render(view).tree).find((n) => n.id === `t-${id}`);
   const words = row.children.map(text).join(" ");
-  assert.match(words, /Opus 4\.7|opus|ctx|\d+\s?(s|m|h)/i);
+  assert.match(words, /\d+\s?(s|m|h)/i);
+  assert.ok(!walk(render(view).tree).some((n) => (n.id ?? "").startsWith("u-tb4")), "never as a terminal in no task");
 });
 
 test("later dialog: a word for a day puts the task off", async () => {
@@ -256,7 +272,7 @@ test("status bar: a button opens and closes the task panel", async () => {
   const { view } = await mount({ role: "status" });
   H.runs.length = 0;
   walk(render(view).tree).find((n) => n.id === "st-detail").handlers.on_click({}, cx());
-  assert.deepEqual(H.runs, [["layout.toggle", { id: "tasker-detail" }]]);
+  assert.deepEqual(H.runs, [["layout.toggle", { id: "taskr-detail" }]]);
 });
 
 test("boards: one tab per project and one for all, the pills go from one to another", async () => {
@@ -269,9 +285,9 @@ test("boards: one tab per project and one for all, the pills go from one to anot
   // A pill opens that board's tab; open again, it's focused.
   H.runs.length = 0;
   tree.find((n) => n.id === "bp-pa").handlers.on_click({}, cx());
-  assert.deepEqual(H.runs.at(-1), ["tab.new", { name: "Board · App", mod: "tasker", props: { role: "board", project: "pa" } }]);
+  assert.deepEqual(H.runs.at(-1), ["tab.new", { name: "Board · App", mod: "taskr", props: { role: "board", project: "pa" } }]);
   H.spaces[0].tabs.push({ id: "tbA", index: 9, name: "Board · App", named: true });
-  H.panes.push({ pane: "pA", tab: "tbA", terminal: null, mod: "tasker", title: "tasker" });
+  H.panes.push({ pane: "pA", tab: "tbA", terminal: null, mod: "taskr", title: "taskr" });
   tree.find((n) => n.id === "bp-pa").handlers.on_click({}, cx());
   assert.deepEqual(H.runs.at(-1), ["pane.focus", { pane: "pA" }]);
   // All: the fixture's "Board" tab.
@@ -281,7 +297,7 @@ test("boards: one tab per project and one for all, the pills go from one to anot
 
 test("a project's row shows its actions while the pointer is on it", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "projects";
+  H.shared["taskr.view"] = "projects";
   const ids = () => walk(render(view).tree).map((n) => n.id).filter(Boolean);
   assert.ok(!ids().includes("pboard-p:pa"), "out of the way");
   assert.ok(!ids().includes("board"), "no board button in Projects' header: each project has its own");
@@ -291,7 +307,7 @@ test("a project's row shows its actions while the pointer is on it", async () =>
 
 test("projects reorder by dragging one onto another; a plain click still folds", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "projects";
+  H.shared["taskr.view"] = "projects";
   const row = (id) => walk(render(view).tree).find((n) => n.id === id);
   row("p:pa").handlers["on_mouse_down:left"]({}, cx());
   row("p:pw").handlers.on_mouse_move({}, cx());
@@ -311,7 +327,7 @@ test("projects reorder by dragging one onto another; a plain click still folds",
 
 test("tasks reorder by dragging a row onto another; from Inbox onto Up next it changes list", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "now";
+  H.shared["taskr.view"] = "now";
   const row = (id) => walk(render(view).tree).find((n) => n.id === `t-${id}`);
   const order = () => { const d = JSON.parse(H.files.get(FILE())); return d.tasks.filter((t) => ["next2", "next1"].includes(t.id)).sort((a, b) => a.rank - b.rank).map((t) => t.id); };
   // Up next: next2 (was P1) above next1 (was P3). next1 dragged onto next2: above it.
@@ -380,7 +396,7 @@ test("a hand-edited tasks.json with odd values still draws", async () => {
     H.files.set(FILE(), JSON.stringify(d));
   });
   assert.deepEqual(c.errors.map(String), []);
-  for (const v of ["now", "projects"]) { H.shared["tasker.view"] = v; render(view); }
+  for (const v of ["now", "projects"]) { H.shared["taskr.view"] = v; render(view); }
   await fireAll(view);
 });
 
@@ -431,7 +447,7 @@ test("menu: Later is a plain item that opens its dialog; the dialog's quick choi
 
 test("Now: a row's second line says where it is and how long, not the model", async () => {
   const { view } = await mount({ role: "sidebar" });
-  H.shared["tasker.view"] = "now";
+  H.shared["taskr.view"] = "now";
   await settle(25);
   const tree = walk(render(view).tree);
   const row = (id) => tree.find((n) => n.id === id).children.map(text).join(" ");

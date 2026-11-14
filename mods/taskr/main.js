@@ -1,6 +1,6 @@
-// tasker: a task manager over repos and coding agents.
+// taskr: a task manager over repos and coding agents.
 // One mod, several roles by props: { role: "sidebar" | "detail" | "status" | "board" },
-// { dialog: ... } when opened as an overlay, or { pane, terminal } as a terminal's header. Data: data/tasker/tasks.json.
+// { dialog: ... } when opened as an overlay, or { pane, terminal } as a terminal's header. Data: data/taskr/tasks.json.
 
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -16,14 +16,14 @@ import { Usage } from "./lib/usage.js";
 import { Titles } from "./lib/titles.js";
 import { sharedCache } from "./lib/cache.js";
 import { launch } from "./lib/actions.js";
-import { today, localDay, resetsLabel } from "./lib/util.js";
+import { today, localDay, resetsLabel, untilde } from "./lib/util.js";
 import { Sidebar } from "./sidebar.js";
 import { Detail } from "./detail.js";
 import { Dialogs } from "./dialogs.js";
 import { Board } from "./board.js";
 import { Pane } from "./pane.js";
 
-export default class Tasker extends View {
+export default class Taskr extends View {
   init(_props, cx) {
     const p = props() ?? {};
     // A pane header gets Herdr's { pane, terminal } (the layout gives it no props of its own).
@@ -68,6 +68,8 @@ export default class Tasker extends View {
         ...this.world.tasks.filter((x) => x.open && x.folder && !x.folderOn).map((x) => ({ folder: x.folder, on: null })),
         ...this.world.untracked.filter((u) => u.folder && !u.where.on).map((u) => ({ folder: u.folder, on: null }))];
       this.repos.refresh(cx, list, window()?.active ? 45000 : 180000);
+      // Whether each open task's folder is a git repository (worktrees only there): rarely changes.
+      this.repos.refresh(cx, this.world.tasks.filter((x) => x.open && x.t.folder).map((x) => ({ folder: untilde(x.t.folder, home()), on: null })), 600000);
     }
     // Every agent's model and context: in tasks and in no task alike.
     if (this.role !== "status") this.info.refresh(cx, [...this.world.tasks.flatMap((x) => x.agents), ...this.world.untracked.flatMap((u) => u.agents)].map((e) => e.term).filter(Boolean));
@@ -91,7 +93,7 @@ export default class Tasker extends View {
   }
 
   // When an agent's state last changed: the core's own stamp, else its tab's
-  // (Herdr keeps working_since and changed_at per tab), else what tasker saw.
+  // (Herdr keeps working_since and changed_at per tab), else what taskr saw.
   sinceOf(e) {
     if (!e) return null;
     const tab = this.world?.spaceOfTab.get(e.a.tab)?.tab;
@@ -112,7 +114,7 @@ export default class Tasker extends View {
   async startAgent(task, worktree, resume = null) {
     try {
       const pending = await launch(this.store, task, { worktree, resume });
-      setShared("tasker.pending", [...(shared("tasker.pending") ?? []), { ...pending, beforeTabs: [...pending.beforeTabs], beforeSpaces: [...pending.beforeSpaces] }]);
+      setShared("taskr.pending", [...(shared("taskr.pending") ?? []), { ...pending, beforeTabs: [...pending.beforeTabs], beforeSpaces: [...pending.beforeSpaces] }]);
     } catch (e) {
       notify({ title: S.launchFailed, body: String(e?.message ?? e), level: "error" });
     }
@@ -128,7 +130,8 @@ export default class Tasker extends View {
     const w = this.world;
     const d = this.store.data;
     const open = w.tasks.filter((x) => x.open);
-    const doneToday = w.tasks.filter((x) => x.t.done_at && localDay(x.t.done_at) === today()).length;
+    // Work you closed: a task with no plan is Done whenever its agent rests, so it doesn't count.
+    const doneToday = w.tasks.filter((x) => !x.t.auto && x.t.done_at && localDay(x.t.done_at) === today()).length;
     const doing = open.filter((x) => x.t.status === "doing").length;
     const needs = open.filter((x) => x.top === "blocked").length + w.untracked.filter((u) => u.top === "blocked").length;
     const working = [...w.byTab.values()].flat().filter((e) => e.status === "working").length;
@@ -144,14 +147,14 @@ export default class Tasker extends View {
     return h_flex().size_full().px(14).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.5)
       .child(item("st-done", doneToday ? t.ansi2 : t.dim, "circle-check", S.doneToday(doneToday)))
       .child(item("st-doing", over ? t.ansi3 : t.muted, null, over ? S.doingOver(doing, max) : S.doingCount(doing, max)))
-      .when(needs > 0, (el) => el.child(item("st-needs", t.blocked, "circle-alert", S.needCount(needs), () => setShared("tasker.view", "now"))))
+      .when(needs > 0, (el) => el.child(item("st-needs", t.blocked, "circle-alert", S.needCount(needs), () => setShared("taskr.view", "now"))))
       .child(item("st-working", working ? t.working : t.dim, "bot", S.workingCount(working)))
       .child(div().flex_1())
       .children(usage)
       .child(item("st-open", t.dim, null, S.openCount(open.length)))
       // The task panel: open when you want more about a task; selecting never opens it.
-      .child(div().id("st-detail").cursor_pointer().text_color(onScreen("tasker-detail") ? t.foreground : t.dim).hover((s) => s.text_color(t.foreground))
-        .tooltip(S.detailsToggle).on_click((_e, cx) => { run("layout.toggle", { id: "tasker-detail" }); cx.notify(); }).child(icon("panel-right", 13)))
+      .child(div().id("st-detail").cursor_pointer().text_color(onScreen("taskr-detail") ? t.foreground : t.dim).hover((s) => s.text_color(t.foreground))
+        .tooltip(S.detailsToggle).on_click((_e, cx) => { run("layout.toggle", { id: "taskr-detail" }); cx.notify(); }).child(icon("panel-right", 13)))
       .child(div().id("st-settings").text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(S.settings)
         .on_click(() => openSettings()).child(icon("settings", 13)));
   }
@@ -187,4 +190,4 @@ export default class Tasker extends View {
 
 export const openSettings = () => openDialog("settings");
 
-Object.assign(Tasker.prototype, Sidebar, Detail, Dialogs, Board, Pane);
+Object.assign(Taskr.prototype, Sidebar, Detail, Dialogs, Board, Pane);

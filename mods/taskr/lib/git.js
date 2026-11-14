@@ -64,6 +64,11 @@ export class RepoCache {
     return this.c.info[this.key(folder, on)];
   }
 
+  // A folder known to be outside git (looked, no repository): no branch, no worktree.
+  notGit(folder, on) {
+    return this.get(folder, on) === null;
+  }
+
   // Looks at the folders that are new, stale (`maxAge`) or forced.
   refresh(cx, list, maxAge = 45000, force = new Set()) {
     const now = Date.now();

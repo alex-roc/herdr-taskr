@@ -1,4 +1,4 @@
-# Developing tasker
+# Developing taskr
 
 ## The loop
 
@@ -15,10 +15,10 @@ There are no dependencies to install: the tests use Node's own runner (Node 22 o
 ## Layout of the code
 
 ```
-layouts/tasker.json   Herdr's main layout with the task list, the detail column and a status bar
-layouts/tasker.svg    the picture Settings shows for the layout
-themes/tasker.json    the dark theme (light uses Herdr's paper)
-mods/tasker/
+layouts/taskr.json   Herdr's main layout with the task list, the detail column and a status bar
+layouts/taskr.svg    the picture Settings shows for the layout
+themes/taskr.json    the dark theme (light uses Herdr's paper)
+mods/taskr/
   main.js             one mod, several roles by props: sidebar | detail | status | board | dialog,
                       and pane (a terminal's header: Herdr's own { pane, terminal })
   sidebar.js          Now and Projects, and the bookkeeping (ties new tabs to tasks, moves tasks
@@ -63,9 +63,9 @@ doesn't have; the list is in `gpui-methods.json`, refresh it after a Herdr updat
 ## A demo in the real window
 
 ```sh
-node scripts/demo.mjs          # 3 made-up repos in ~/tasker-demo, 13 tasks, 4 stand-in agents
+node scripts/demo.mjs          # 3 made-up folders in ~/taskr-demo, 13 tasks, 4 stand-in agents
 node scripts/demo.mjs --adopt <tab id>   # also one of your real agent tabs, as a demo task
-node scripts/demo.mjs --clean  # closes the demo spaces, deletes ~/tasker-demo, restores your tasks
+node scripts/demo.mjs --clean  # closes the demo spaces, deletes ~/taskr-demo, restores your tasks
 ```
 
 The stand-in agents (`scripts/fake-agent.sh`) report working, blocked (with a question) and done
@@ -73,23 +73,25 @@ through the Program Status Protocol, as real agents do:
 `printf '\e]7501;state=blocked:kind=question:app=claude-code:msg=<base64>\e\\'`. This is how
 `preview.png` and `docs/board.png` are made: no personal data in them. The demo covers a blocked, a
 working and a finished agent, a task to resume, one put off and one *someday*, a task and a terminal
-for the whole Acme project (its own space, `~/tasker-demo`), and reminders off (no toasts in shots).
+for the whole Acme project (its own space, `~/taskr-demo`), and reminders off (no toasts in shots).
 
 Screenshots, with the window maximized (`herdr-app do window.maximize`, again to put it back: a window
 in split view is half as wide) and the sidebar at 330px (`layout.resize {id: "sidebar", px: 330}`);
-`herdr-app shot` gives a 2× frame (about 4440×2420). The demo puts your own agents' tabs in an archived
-task, so they're neither tracked as light tasks nor drawn; its agents' addresses change every run
+`herdr-app shot` gives a 2× frame (4480×2460 on a 4.5K display). The demo puts your own agents' tabs in an archived
+task, so they're neither made into no-plan tasks nor drawn; its agents' addresses change every run
 (find one by its tab's name in `herdr-app ls`).
 
 - Bring the window to the front first (`osascript -e 'tell application "Herdr" to activate'`) or the
   frame is stale; two identical shots mean it was. That takes whoever uses the Mac to Herdr's desktop:
   say so first and take every shot in one go; to check behaviour, read files instead (`tasks.json`). Close a stray popup with `herdr-app do overlay.close`.
-- Drive it with commands: `tasker.view`, `tasker.select:<id>` (opens the detail), `tasker.board`,
-  `tasker.new`, `tasker.settings`, `tasker.jump`, `layout.select`/`layout.hide`, `pane.focus {terminal}`.
+- Drive it with commands: `taskr.view`, `taskr.select:<id>` (opens the detail), `taskr.board`,
+  `taskr.new`, `taskr.settings`, `taskr.jump`, `layout.select`/`layout.hide`, `pane.focus {terminal}`.
 - `preview.png`, `site/img/overview.png` and `board.png`: the whole frame at half size. Lists: x 0–660
-  from y 92. Detail: x 3736–4472 from y 84. Dialogs: their box (settings exactly, the form with a
-  20px margin). Update `width`/`height` in `site/*.html` when a size changes.
-- Note what you changed (sidebar size, stack child, detail shown, `tasker.view`) and put it back
+  from y 80. Detail: x 3746–4480 from y 84. Dialogs: their box (settings exactly, the form and the
+  find box with a 20px margin); the form is a demo task's (*Edit task*), since *New task* lists the
+  folders open on your Mac. Shots taken one after another can repeat a stale frame: activate the
+  window before each one and compare them. Update `width`/`height` in `site/*.html` when a size changes.
+- Note what you changed (sidebar size, stack child, detail shown, `taskr.view`) and put it back
   after `--clean`.
 
 ## Things that tripped the build up
@@ -110,19 +112,19 @@ task, so they're neither tracked as light tasks nor drawn; its agents' addresses
   list's "drag is off") doesn't run too; a card's `on_mouse_move` stops it as well, or the column
   under it would take the target back.
 - One handler per event on an element: when one element takes two kinds of drag (a project
-  header: projects to reorder, repositories to move in), branch inside a single `on_mouse_move`
+  header: projects to reorder, folders to move in), branch inside a single `on_mouse_move`
   and `on_mouse_up`. The test stub keeps only the last handler of each kind.
 - A new tab can show up in `spaces()` a look before its terminal is in `terminals()`. Labelling
-  its terminals (`tasker.project`) then finds none and the label is lost: keep the pending launch
+  its terminals (`taskr.project`) then finds none and the label is lost: keep the pending launch
   (with its tab) until the terminal is there. `space.new` and `tab.new` take no labels.
 - Herdr keeps terminals alive when the app quits or updates (herdr-core holds them), but after a
   reboot or a core crash a terminal comes back as a bare shell: its program is never run again.
-  So agents back after a restart are tasker's doing (`lib/revive.js` types `claude --resume <id>`),
+  So agents back after a restart are taskr's doing (`lib/revive.js` types `claude --resume <id>`),
   not Herdr's; checked with Herdr 0.1.15 / hc 0.1.21. Before removing it, look at the shell's
   children (`ps`): a `claude --resume` started a few seconds after the shell is revive.
 - Herdr doesn't hot-reload a mod folder that is a symlink: install by copying.
 - A pane header is a mod Herdr draws once per pane with `props()` = `{pane, terminal}`: the layout
-  names it with no props of its own (`{"mod": "tasker"}`), and `main.js` takes `pane` for that role.
+  names it with no props of its own (`{"mod": "taskr"}`), and `main.js` takes `pane` for that role.
 - `layout.resize {id, px}` sizes a block and Herdr keeps it in `layouts/.state/<layout>.json`;
   `{id, weight}` with the file's own weight drops what it kept. Folding a stacked list is that.
 - In a menu, a dim label beside small choices reads as a disabled item: people click the label. Make
@@ -151,14 +153,14 @@ task, so they're neither tracked as light tasks nor drawn; its agents' addresses
 
 ## The website
 
-`site/` is the GitHub Pages site (https://alex-roc.github.io/herdr-tasker/): plain HTML and CSS, no
+`site/` is the GitHub Pages site (https://alex-roc.github.io/herdr-taskr/): plain HTML and CSS, no
 build. `.github/workflows/pages.yml` publishes it on every push that touches `site/`. Its pictures
 in `site/img/` come from the demo (`scripts/demo.mjs`), cropped; never from your own spaces. Preview
 it with `python3 -m http.server -d site 8765`.
 
 ## Publishing
 
-The repository is laid out as herdr.dev expects a layout: `layouts/tasker.json`, `mods/tasker/`,
+The repository is laid out as herdr.dev expects a layout: `layouts/taskr.json`, `mods/taskr/`,
 `RECIPE.md` and `preview.png` at the root, and the GitHub topic `herdr-layout`. herdr.dev picks it up
 within the hour. Before a release: tests, `scripts/check.sh`, a new `preview.png` from the demo if the
 look changed, and a line in `CHANGELOG.md`.

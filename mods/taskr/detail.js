@@ -24,10 +24,10 @@ export const Detail = {
     // Looks again without drawing: the panel redraws only when what it found changed
     // (every redraw of a mod redraws the whole window, terminals included).
     cx.timer.every(LOOK_EVERY, (cx) => {
-      const x = this.world?.taskById.get(shared("tasker.selected"));
+      const x = this.world?.taskById.get(shared("taskr.selected"));
       if (x && window()?.active) { this.det.at = 0; this.lookUp(cx, x); }
     });
-    cx.timer.every(CLOCK_EVERY, (cx) => { if (window()?.active && onScreen("tasker-detail")) cx.notify(); });
+    cx.timer.every(CLOCK_EVERY, (cx) => { if (window()?.active && onScreen("taskr-detail")) cx.notify(); });
   },
 
   // Screen, diff and PR of the shown task: when it changes, then every few seconds,
@@ -37,14 +37,14 @@ export const Detail = {
     const id = x.t.id;
     const e = this.leadOf(x);
     const sig = `${id}|${e?.a.address ?? ""}|${e?.top ?? ""}`;
-    if (this.det.busy || !onScreen("tasker-detail")) return;
+    if (this.det.busy || !onScreen("taskr-detail")) return;
     if (this.det.sig === sig && (!window()?.active || Date.now() - (this.det.at ?? 0) < LOOK_EVERY)) return;
     if (this.det.id !== id) this.det = { id, prAt: 0 };
     this.det.sig = sig;
     this.det.at = Date.now();
     this.det.busy = true;
     const h = home();
-    const where = x.t.worktree ? untilde(x.t.worktree, h) : e?.term?.cwd ?? (x.t.repo ? untilde(x.t.repo, h) : null);
+    const where = x.t.worktree ? untilde(x.t.worktree, h) : e?.term?.cwd ?? (x.t.folder ? untilde(x.t.folder, h) : null);
     const shown = (d) => JSON.stringify([d.screen, d.where, d.diff, d.pr]);
     const before = shown(this.det);
     const inView = Boolean(e?.a.pane) && focused()?.pane === e.a.pane;
@@ -110,15 +110,15 @@ export const Detail = {
 
   renderDetail(cx) {
     const t = theme();
-    const id = shared("tasker.selected");
+    const id = shared("taskr.selected");
     const x = id ? this.world?.taskById.get(id) : null;
-    const shell = (body) => v_flex().id("tasker-detail").size_full().min_h(0).bg(t.chrome).text_size(12.5).text_color(t.foreground)
+    const shell = (body) => v_flex().id("taskr-detail").size_full().min_h(0).bg(t.chrome).text_size(12.5).text_color(t.foreground)
       .child(h_flex().px(14).h(40).flex_none().items_center().border_b(1).border_color(t.border)
         .child(div().flex_1().text_size(11.5).font_medium().text_color(t.dim).child(S.task))
         .when(Boolean(x), (el) => el.child(div().id("d-edit").px(6).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(S.editTask)
           .on_click(() => openDialog("task", { task: x.t.id })).child(icon("pencil", 14))))
         .child(div().id("d-close").px(6).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground)).tooltip(S.close)
-          .on_click(() => run("layout.hide", { id: "tasker-detail" })).child(icon("x", 14))))
+          .on_click(() => run("layout.hide", { id: "taskr-detail" })).child(icon("x", 14))))
       .child(v_flex().id("d-body").flex_1().min_h(0).px(14).pb(16).overflow_y_scrollbar().child(body));
     if (!x) return shell(div().pt(14).text_color(t.dim).child(S.noTaskSelected));
     this.lookUp(cx, x);
@@ -144,7 +144,7 @@ export const Detail = {
       .when(!e && Boolean(last), (el) => el.child(button(t, "d-resume", S.resume, (_e, cx) => this.resume(cx, task),
         { primary: true, small: true, iconName: "rotate-ccw", tooltip: last ? S.resumeHint(last.app, duration(now - last.at)) : null })))
       .when(!e, (el) => el.child(button(t, "d-launch", S.start, (_e, cx) => this.launch(cx, task, false), { primary: !last, small: true, iconName: "play" }))
-        .when(Boolean(task.repo) && !task.worktree, (el) => el.child(button(t, "d-launch-wt", S.startWorktree, (_e, cx) => this.launch(cx, task, true), { small: true, iconName: "git-fork", tooltip: S.startWorktreeHint }))))
+        .when(Boolean(task.folder) && !task.worktree && !this.repos.notGit(untilde(task.folder, home())), (el) => el.child(button(t, "d-launch-wt", S.startWorktree, (_e, cx) => this.launch(cx, task, true), { small: true, iconName: "git-fork", tooltip: S.startWorktreeHint }))))
       .when(Boolean(e), (el) => el.child(button(t, "d-focus", S.focusAgent, () => run("pane.focus", { pane: e.a.pane }), { primary: true, small: true, iconName: "arrow-right" })))
       // Later: put it off, or bring it back now.
       .when(isLater(task), (el) => el.child(button(t, "d-back", S.bringBack, (_e, cx) => this.upd(cx, task.id, (y) => { y.snooze = null; }), { small: true, iconName: "rotate-ccw" })))
@@ -190,12 +190,16 @@ export const Detail = {
         .child(div().pt(2).child(statusIcon(t, task.status, 17)))
         .child(div().flex_1().min_w(0).text_size(15).font_semibold().child(task.title)))
       .child(h_flex().pt(6).gap(6).items_center().flex_wrap().text_size(11).text_color(t.dim)
-        .when(Boolean(task.repo), (el) => el.child(div().child(base(task.repo))))
+        .when(Boolean(task.folder), (el) => el.child(div().child(base(task.folder))))
         .when(Boolean(due), (el) => el.child(due))
         .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze)), t.dim)))
         .when(Boolean(task.estimate), (el) => el.child(chip(t, S.estimateChip(task.estimate), t.dim)))
         .when(Boolean(task.issue?.url), (el) => el.child(div().id("d-issue").text_color(t.accent).cursor_pointer().hover((s) => s.opacity(0.8))
           .on_click(() => openUrl(task.issue.url)).child(issueLabel(task.issue)))))
+      // An agent started on its own: a task with no plan, until you give it one.
+      .when(task.auto === true, (el) => el.child(h_flex().pt(8).gap(8).items_center().text_size(11.5).text_color(t.dim)
+        .child(div().flex_1().min_w(0).child(S.noPlan))
+        .child(button(t, "d-plan", `${S.planIt}…`, () => openDialog("task", { task: task.id }), { small: true, iconName: "pencil" }))))
       .child(v_flex().pt(10).gap(6).child(statusRow))
       .child(div().pt(10).child(actions))
       .when(Boolean(task.next_step), (el) => el.child(this.section(t, S.nextStep, div().text_color(t.foreground).child(task.next_step))))

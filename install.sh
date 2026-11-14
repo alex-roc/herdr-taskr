@@ -1,11 +1,11 @@
 #!/bin/sh
-# Installs (or updates) tasker in the Herdr app's home: the layout, its picture,
+# Installs (or updates) taskr in the Herdr app's home: the layout, its picture,
 # its theme and its mod. Copies, not links: Herdr only hot-reloads files saved
 # inside its own folder.
 #
 # Usage: ./install.sh              install or update
-#        ./install.sh --keys       also add tasker's shortcuts to keys.json (never replaces yours)
-#        ./install.sh --uninstall  remove tasker (your tasks in data/tasker stay)
+#        ./install.sh --keys       also add taskr's shortcuts to keys.json (never replaces yours)
+#        ./install.sh --uninstall  remove taskr (your tasks in data/taskr stay)
 set -eu
 
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -26,35 +26,56 @@ if [ ! -d "$HOME_DIR" ]; then
 fi
 
 if [ "${MODE:-}" = "uninstall" ]; then
-  rm -rf "$HOME_DIR/mods/tasker" "$HOME_DIR/layouts/tasker.json" "$HOME_DIR/layouts/tasker.svg" "$HOME_DIR/themes/tasker.json"
-  echo "tasker removed. Your tasks are still in $HOME_DIR/data/tasker/tasks.json."
-  echo "Its shortcuts, if you added them, are the \"layout:tasker\" section of keys.json: harmless, or delete it."
+  rm -rf "$HOME_DIR/mods/taskr" "$HOME_DIR/layouts/taskr.json" "$HOME_DIR/layouts/taskr.svg" "$HOME_DIR/themes/taskr.json"
+  echo "taskr removed. Your tasks are still in $HOME_DIR/data/taskr/tasks.json."
+  echo "Its shortcuts, if you added them, are the \"layout:taskr\" section of keys.json: harmless, or delete it."
   exit 0
 fi
 
-# A tasker that isn't this one (someone else's mod with the same name) is never overwritten.
-if [ -e "$HOME_DIR/mods/tasker" ] && [ ! -L "$HOME_DIR/mods/tasker" ] && [ ! -f "$HOME_DIR/mods/tasker/.tasker" ]; then
-  echo "$HOME_DIR/mods/tasker exists and isn't tasker: rename it first." >&2
+# A taskr that isn't this one (someone else's mod with the same name) is never overwritten.
+if [ -e "$HOME_DIR/mods/taskr" ] && [ ! -L "$HOME_DIR/mods/taskr" ] && [ ! -f "$HOME_DIR/mods/taskr/.taskr" ]; then
+  echo "$HOME_DIR/mods/taskr exists and isn't taskr: rename it first." >&2
   exit 1
 fi
 
 # Older installs linked these; replace links with copies.
-for p in mods/tasker layouts/tasker.json themes/tasker.json; do
+for p in mods/taskr layouts/taskr.json themes/taskr.json; do
   if [ -L "$HOME_DIR/$p" ]; then rm "$HOME_DIR/$p"; fi
 done
 
-mkdir -p "$HOME_DIR/mods/tasker" "$HOME_DIR/layouts" "$HOME_DIR/themes"
+mkdir -p "$HOME_DIR/mods/taskr" "$HOME_DIR/layouts" "$HOME_DIR/themes"
 if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete --exclude 'jsconfig.json' --exclude '*.d.ts' --exclude '.tasker' "$SRC/mods/tasker/" "$HOME_DIR/mods/tasker/"
+  rsync -a --delete --exclude 'jsconfig.json' --exclude '*.d.ts' --exclude '.taskr' "$SRC/mods/taskr/" "$HOME_DIR/mods/taskr/"
 else
-  find "$HOME_DIR/mods/tasker" -mindepth 1 ! -name 'jsconfig.json' ! -name '*.d.ts' -exec rm -rf {} + 2>/dev/null || true
-  cp -R "$SRC/mods/tasker/." "$HOME_DIR/mods/tasker/"
+  find "$HOME_DIR/mods/taskr" -mindepth 1 ! -name 'jsconfig.json' ! -name '*.d.ts' -exec rm -rf {} + 2>/dev/null || true
+  cp -R "$SRC/mods/taskr/." "$HOME_DIR/mods/taskr/"
 fi
-touch "$HOME_DIR/mods/tasker/.tasker"
-cp "$SRC/layouts/tasker.json" "$SRC/layouts/tasker.svg" "$HOME_DIR/layouts/"
-cp "$SRC/themes/tasker.json" "$HOME_DIR/themes/tasker.json"
+touch "$HOME_DIR/mods/taskr/.taskr"
+cp "$SRC/layouts/taskr.json" "$SRC/layouts/taskr.svg" "$HOME_DIR/layouts/"
+cp "$SRC/themes/taskr.json" "$HOME_DIR/themes/taskr.json"
 
-# Shortcuts: tasker's "layout:tasker" keys are added; a key you already bound there stays yours.
+# taskr was called tasker before 1.6: its install goes (only when it's ours, marked .tasker), and
+# its shortcuts carry over to "layout:taskr". Your tasks come over by themselves on first start
+# (from data/tasker, which stays as it was).
+if [ -f "$HOME_DIR/mods/tasker/.tasker" ]; then
+  rm -rf "$HOME_DIR/mods/tasker" "$HOME_DIR/layouts/tasker.json" "$HOME_DIR/layouts/tasker.svg" "$HOME_DIR/themes/tasker.json"
+  echo "tasker (taskr's old name) removed; your tasks come over to data/taskr when taskr starts."
+  if grep -q '"layout":"tasker"' "$HOME_DIR/shared.json" 2>/dev/null; then SHOWN_OLD=1; fi
+fi
+if [ -f "$HOME_DIR/keys.json" ] && grep -q '"layout:tasker"' "$HOME_DIR/keys.json" && command -v node >/dev/null 2>&1; then
+  node -e '
+    const fs = require("fs");
+    const f = process.argv[1];
+    const keys = JSON.parse(fs.readFileSync(f, "utf8"));
+    const old = keys["layout:tasker"];
+    keys["layout:taskr"] ??= {};
+    for (const [k, v] of Object.entries(old)) keys["layout:taskr"][k] ??= String(v).replace(/^tasker\./, "taskr.");
+    delete keys["layout:tasker"];
+    fs.writeFileSync(f, JSON.stringify(keys, null, 2) + "\n");
+    console.log("Shortcuts moved from layout:tasker to layout:taskr.");' "$HOME_DIR/keys.json"
+fi
+
+# Shortcuts: taskr's "layout:taskr" keys are added; a key you already bound there stays yours.
 if [ "$KEYS" = 1 ]; then
   MERGE='
     const fs = require("fs");
@@ -79,6 +100,10 @@ if [ "$KEYS" = 1 ]; then
 fi
 
 if command -v herdr-app >/dev/null 2>&1; then
-  herdr-app check "$HOME_DIR/mods/tasker"
+  herdr-app check "$HOME_DIR/mods/taskr"
 fi
-echo "tasker installed. Pick it in Settings → Look, or: herdr-app do layout.switch '{\"name\":\"tasker\"}'"
+# The layout on screen was tasker's: show taskr's in its place.
+if [ "${SHOWN_OLD:-0}" = 1 ] && command -v herdr-app >/dev/null 2>&1; then
+  herdr-app do layout.switch '{"name":"taskr"}' >/dev/null 2>&1 || true
+fi
+echo "taskr installed. Pick it in Settings → Look, or: herdr-app do layout.switch '{\"name\":\"taskr\"}'"

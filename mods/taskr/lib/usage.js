@@ -2,7 +2,7 @@
 // Codex's. Shown in the status bar.
 //
 // Claude: bin/claude-usage.sh asks your own `claude` CLI (get_usage); the CLI
-// signs in by itself, tasker reads no token. Codex: the newest rate_limits its
+// signs in by itself, taskr reads no token. Codex: the newest rate_limits its
 // session logs recorded (no process started). Nothing here sends a prompt.
 
 import { exec, appHome } from "herdr";
@@ -53,7 +53,7 @@ export function parseCodex(text, now = Date.now()) {
 }
 
 async function claude() {
-  const r = await exec("sh", [`${appHome()}/mods/tasker/bin/claude-usage.sh`]);
+  const r = await exec("sh", [`${appHome()}/mods/taskr/bin/claude-usage.sh`]);
   if (r.code === 127) return null; // no claude CLI: nothing to show
   if (r.code !== 0 || !r.stdout.trim()) throw new Error("claude didn't answer");
   return parseClaude(r.stdout.trim().split("\n")[0]);

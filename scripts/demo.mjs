@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// A demo of tasker in the running Herdr window, for screenshots and trying it out:
-// three made-up repositories in ~/tasker-demo, tasks in every status, and stand-in
+// A demo of taskr in the running Herdr window, for screenshots and trying it out:
+// three made-up repositories and a plain folder in ~/taskr-demo, tasks in every status, and stand-in
 // agents (scripts/fake-agent.sh) working, blocked on a question and done.
 //
 //   node scripts/demo.mjs          set it up (your tasks.json is put aside first)
 //   node scripts/demo.mjs --adopt <tab id>   also show one of your real agent tabs as a demo task
-//   node scripts/demo.mjs --clean  close the demo spaces, delete ~/tasker-demo, restore your tasks
+//   node scripts/demo.mjs --clean  close the demo spaces, delete ~/taskr-demo, restore your tasks
 //
 // Nothing here touches your own spaces or repositories.
 
@@ -16,10 +16,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HOME = homedir();
-const ROOT = join(HOME, "tasker-demo");
+const ROOT = join(HOME, "taskr-demo");
 const STATE = join(ROOT, ".demo.json");
 const APP = process.env.HERDR_APP_HOME ?? join(HOME, ".config", "herdr-app");
-const FILE = join(APP, "data", "tasker", "tasks.json");
+const FILE = join(APP, "data", "taskr", "tasks.json");
 const BACKUP = `${FILE}.before-demo`;
 const AGENT = join(dirname(fileURLToPath(import.meta.url)), "fake-agent.sh");
 const DAY = 86400000;
@@ -46,7 +46,7 @@ function repo(name, files, dirty = {}) {
   sh("git", ["add", "."], { cwd: dir });
   sh("git", ["-c", "user.name=Demo", "-c", "user.email=demo@example.com", "commit", "-qm", "Start"], { cwd: dir });
   for (const [f, text] of Object.entries(dirty)) writeFileSync(join(dir, f), text);
-  return `~/tasker-demo/${name}`;
+  return `~/taskr-demo/${name}`;
 }
 
 function agent(title, state, msg = "") {
@@ -58,13 +58,19 @@ function setup() {
   const web = repo("acme-web", { "README.md": "# acme-web\n", "src/auth/login.tsx": "export {};\n" }, { "src/auth/login.tsx": "export const login = () => {};\n", "src/auth/callback.ts": "// wip\n" });
   const api = repo("acme-api", { "README.md": "# acme-api\n", "src/limits.ts": "export {};\n" });
   const book = repo("handbook", { "README.md": "# Handbook\n" });
+  // A folder that's no repository: notes.
+  const notes = "~/taskr-demo/notes";
+  mkdirSync(join(ROOT, "notes"), { recursive: true });
+  writeFileSync(join(ROOT, "notes", "ideas.md"), "# Ideas\n");
   const abs = (r) => r.replace(/^~/, HOME);
 
   const w1 = herdr("space.new", { folder: abs(web), tab: "Add OAuth login", argv: agent("Add OAuth login", "working") });
   const w2 = herdr("tab.new", { space: w1.space, name: "Pick a database", folder: abs(web), argv: agent("Pick a database", "blocked", "Sessions: Postgres or SQLite?") });
   const a1 = herdr("space.new", { folder: abs(api), tab: "Rate limiter", argv: agent("Rate-limit the public API", "done") });
-  // An agent in no task: the "Not in a task" section and the board's No task lane.
-  const b1 = herdr("space.new", { folder: abs(book), tab: "docs search", argv: agent("Try a search box for the docs", "idle") });
+  // An agent started on its own: a task with no plan, finished, in To review.
+  const b1 = herdr("space.new", { folder: abs(book), tab: "docs search", argv: agent("Try a search box for the docs", "done") });
+  // A plain terminal in the notes folder: no task.
+  const n1 = herdr("tab.new", { space: b1.space, name: "notes", folder: abs(notes) });
   // Acme's own space, in the folder above its two repositories: work for the whole project.
   const p1 = herdr("space.new", { name: "Acme", folder: ROOT, tab: "map services", argv: agent("Map the services across both repos", "idle") });
   // Optionally, a real agent tab of yours shown as a demo task (its real model and effort): --adopt <tab id>.
@@ -80,43 +86,44 @@ function setup() {
   if (existsSync(FILE) && !existsSync(BACKUP)) copyFileSync(FILE, BACKUP);
   const now = Date.now();
   let n = 0;
-  const task = (f) => ({ id: `demo${++n}`, project: null, repo: null, status: "next", rank: n, due: null, estimate: null, next_step: "", notes: "",
+  const task = (f) => ({ id: `demo${++n}`, project: null, folder: null, status: "next", rank: n, due: null, estimate: null, next_step: "", notes: "",
     issue: null, worktree: null, branch: null, tabs: [], created: now - (3 + n) * DAY, updated: now - DAY, done_at: null, agent_ms: 0,
     history: [{ s: "inbox", at: now - (3 + n) * DAY }, { s: f.status ?? "next", at: f.updated ?? now - DAY }], ...f });
   const data = {
     version: 1,
     // No reminders: a demo isn't the time for notifications.
-    settings: { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false, track: true },
+    settings: { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false, review_after: 0 },
     projects: [
-      { id: "acme", name: "Acme", color: "ansi4", repos: [web, api] },
-      { id: "book", name: "Handbook", color: "ansi5", repos: [book] },
+      { id: "acme", name: "Acme", folders: [web, api] },
+      { id: "book", name: "Handbook", folders: [book, notes] },
     ],
     tasks: [
-      task({ title: "Add OAuth login", project: "acme", repo: web, status: "doing", due: day(2), next_step: "Wire the callback route", tabs: [w1.tab], agent_ms: 47 * 60000, estimate: "1d" }),
-      task({ title: "Pick a database for sessions", project: "acme", repo: web, status: "doing", tabs: [w2.tab], agent_ms: 12 * 60000 }),
-      task({ title: "Rate-limit the public API", project: "acme", repo: api, status: "review", tabs: [a1.tab], agent_ms: 33 * 60000,
+      task({ title: "Add OAuth login", project: "acme", folder: web, status: "doing", due: day(2), next_step: "Wire the callback route", tabs: [w1.tab], agent_ms: 47 * 60000, estimate: "1d" }),
+      task({ title: "Pick a database for sessions", project: "acme", folder: web, status: "doing", tabs: [w2.tab], agent_ms: 12 * 60000 }),
+      task({ title: "Rate-limit the public API", project: "acme", folder: api, status: "review", tabs: [a1.tab], agent_ms: 33 * 60000,
         issue: { number: 31, url: "https://github.com/example/acme-api/issues/31", body: "" } }),
       // Its agent ran yesterday and is gone: the detail offers Resume agent.
-      task({ title: "Fix the flaky checkout test", project: "acme", repo: web, due: day(0), next_step: "Reproduce with --repeat 50",
+      task({ title: "Fix the flaky checkout test", project: "acme", folder: web, due: day(0), next_step: "Reproduce with --repeat 50",
         sessions: [{ app: "claude", id: "3f2c9a1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f", cwd: web, at: now - 20 * 3600000 }], agent_ms: 25 * 60000 }),
-      task({ title: "Write the onboarding guide", project: "book", repo: book, due: day(4), estimate: "3h" }),
-      task({ title: "Upgrade to Node 24", project: "acme", repo: api, rank: 99 }),
-      task({ title: "Pricing page copy", project: "acme", repo: web, status: "waiting", next_step: "Waiting on design", updated: now - 5 * DAY }),
+      task({ title: "Write the onboarding guide", project: "book", folder: book, due: day(4), estimate: "3h" }),
+      task({ title: "Upgrade to Node 24", project: "acme", folder: api, rank: 99 }),
+      task({ title: "Pricing page copy", project: "acme", folder: web, status: "waiting", next_step: "Waiting on design", updated: now - 5 * DAY }),
       task({ title: "Try a dark theme for the docs", project: "book", status: "inbox", snooze: day(3) }),
       // Put off: back in three days, and someday.
-      task({ title: "Move the docs to MDX", project: "book", repo: book, status: "next", snooze: "someday" }),
+      task({ title: "Move the docs to MDX", project: "book", folder: book, status: "next", snooze: "someday" }),
       // A task for the whole project: its agent works across acme-web and acme-api.
       task({ title: "Share one auth client across web and api", project: "acme", next_step: "List where each repo calls auth" }),
-      task({ title: "Import the old wiki", project: "book", repo: book, status: "inbox" }),
-      task({ title: "Ship the v1.4 changelog", project: "book", repo: book, status: "done", done_at: now - 2 * 3600000 }),
-      task({ title: "Rotate the API keys", project: "acme", repo: api, status: "done", done_at: now - 2 * DAY }),
-      ...(adopt ? [task({ title: "Polish the README", project: "book", repo: book, status: "doing", next_step: "Add a quick start", tabs: [adopt], agent_ms: 38 * 60000 })] : []),
+      task({ title: "Import the old wiki", project: "book", folder: book, status: "inbox" }),
+      task({ title: "Ship the v1.4 changelog", project: "book", folder: book, status: "done", done_at: now - 2 * 3600000 }),
+      task({ title: "Rotate the API keys", project: "acme", folder: api, status: "done", done_at: now - 2 * DAY }),
+      ...(adopt ? [task({ title: "Polish the README", project: "book", folder: book, status: "doing", next_step: "Add a quick start", tabs: [adopt], agent_ms: 38 * 60000 })] : []),
       ...(yours.length ? [task({ title: "Your own tabs (hidden in the demo)", status: "done", archived: true, tabs: yours })] : []),
     ],
   };
   writeFileSync(FILE, JSON.stringify(data, null, 1) + "\n");
   herdr("space.select", { id: w1.space });
-  console.log("Demo ready: three repos in ~/tasker-demo, 13 tasks, 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
+  void n1;
+  console.log("Demo ready: three repos and a folder in ~/taskr-demo, 13 tasks, 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
 }
 
 process.argv.includes("--clean") ? clean() : setup();

@@ -4,22 +4,22 @@
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
+import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window, focused } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere } from "./lib/world.js";
 import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, moveRepo } from "./lib/actions.js";
-import { RANK, tilde, today, isLater, laterLabel } from "./lib/util.js";
+import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel } from "./lib/util.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
 import { Revive } from "./lib/revive.js";
 import { openDialog } from "./lib/open.js";
 
-// A light task whose agent quit goes this long after (time for an agent to come back by itself
-// after a restart, or for you to start it again in the same tab).
+// A task with no plan whose agent quit is closed this long after (time for an agent to come back
+// by itself after a restart, or for you to start it again in the same tab).
 const QUIT_MS = 30000;
 // The stacked lists' blocks in the layout, and the height of a folded one (its header).
-const STACK = { projects: "tasker-projects", now: "tasker-now" };
+const STACK = { projects: "taskr-projects", now: "taskr-now" };
 const STACK_HEADER = 41;
 
 const lead = (x) => [...(x.agents ?? [])].sort((a, b) => (RANK[b.top] ?? 0) - (RANK[a.top] ?? 0))[0] ?? null;
@@ -62,15 +62,15 @@ export const Sidebar = {
   },
 
   view() {
-    return this.fixedView ?? shared("tasker.view") ?? "now";
+    return this.fixedView ?? shared("taskr.view") ?? "now";
   },
 
   // To the other view: the other tab, or the other list when both show.
   switchView() {
     const next = this.view() === "now" ? "projects" : "now";
-    if (!this.fixedView || !shownLists().includes(next)) return setShared("tasker.view", next);
+    if (!this.fixedView || !shownLists().includes(next)) return setShared("taskr.view", next);
     sharedCache("lists").info.focus = next;
-    setShared("tasker.listFocus", Date.now()); // redraws every list; that one takes the keys
+    setShared("taskr.listFocus", Date.now()); // redraws every list; that one takes the keys
   },
 
   // Stacked lists (Projects over Now): one folds to its header and the other takes the room;
@@ -81,12 +81,12 @@ export const Sidebar = {
       run("layout.resize", { id: STACK[view], px: STACK_HEADER });
       run("layout.resize", { id: STACK[other], weight: 1 });
     } else run("layout.resize", { id: STACK[view], weight: 1 });
-    setShared("tasker.stackFolded", fold ? view : null);
+    setShared("taskr.stackFolded", fold ? view : null);
   },
 
   // All the room to this one: the other folds (this one unfolds first if it was).
   stackFocus(view) {
-    if (shared("tasker.stackFolded") === view) this.stackFold(view, false);
+    if (shared("taskr.stackFolded") === view) this.stackFold(view, false);
     this.stackFold(view === "now" ? "projects" : "now", true);
   },
 
@@ -99,7 +99,7 @@ export const Sidebar = {
   // Selecting shows the task in the detail panel when it's open; it never opens it:
   // the panel is there when the person wants more (its button, cmd-i, i, Details).
   select(id) {
-    setShared("tasker.selected", id);
+    setShared("taskr.selected", id);
   },
 
   // The pane to show for a task: its agent's (the one that needs you most), else a
@@ -123,16 +123,16 @@ export const Sidebar = {
 
   // Keys: j/k move, enter goes to the agent, space done, t to the top, n new, e edit, l launch, w worktree, / jump.
   command(c, cx) {
-    const sel = shared("tasker.selected");
+    const sel = shared("taskr.selected");
     const i = this.order.indexOf(sel);
     const task = this.store.task(sel);
-    const move = (d) => { const id = this.order[Math.max(0, Math.min(this.order.length - 1, (i < 0 ? -d : i) + d))]; if (id) setShared("tasker.selected", id); };
+    const move = (d) => { const id = this.order[Math.max(0, Math.min(this.order.length - 1, (i < 0 ? -d : i) + d))]; if (id) setShared("taskr.selected", id); };
     const upd = (fn) => task && cx.spawn(async () => this.store.update((d) => { const x = d.tasks.find((y) => y.id === task.id); if (!x) return false; fn(kept(x)); x.updated = Date.now(); }));
-    // "select:<task id>" (herdr-app do tasker.select:<id>): show that task, for scripts and agents.
+    // "select:<task id>" (herdr-app do taskr.select:<id>): show that task, for scripts and agents.
     // Asked for by a script or a notification: the panel opens for it.
     if (c.startsWith("select:")) {
       const id = c.slice(7);
-      if (this.store.task(id)) { this.select(id); run("layout.show", { id: "tasker-detail" }); }
+      if (this.store.task(id)) { this.select(id); run("layout.show", { id: "taskr-detail" }); }
       return;
     }
     switch (c) {
@@ -144,10 +144,10 @@ export const Sidebar = {
       case "new": return this.openTaskForm({});
       case "edit": return task && this.openTaskForm({ task: task.id });
       case "launch": return task && this.launch(cx, task, false);
-      case "worktree": return task?.repo && this.launch(cx, task, true);
+      case "worktree": return task?.folder && !this.repos.notGit(untilde(task.folder, home())) && this.launch(cx, task, true);
       case "resume": return task && this.resume(cx, task);
       case "later": return task && openDialog("later", { task: task.id });
-      case "details": return task && run("layout.show", { id: "tasker-detail" });
+      case "details": return task && run("layout.show", { id: "taskr-detail" });
       case "jump": return openDialog("jump");
       case "board": return this.openBoard();
       case "settings": return openDialog("settings");
@@ -179,7 +179,7 @@ export const Sidebar = {
     const ops = [];
     const now = Date.now();
     // New tabs from launches.
-    const pending = shared("tasker.pending") ?? [];
+    const pending = shared("taskr.pending") ?? [];
     if (pending.length) {
       const sp = spaces();
       const left = [];
@@ -199,7 +199,7 @@ export const Sidebar = {
         }
         else if (now - p.at < 30000) left.push(p);
       }
-      if (left.length !== pending.length || left.some((p, i) => p !== pending[i])) setShared("tasker.pending", left);
+      if (left.length !== pending.length || left.some((p, i) => p !== pending[i])) setShared("taskr.pending", left);
     }
     // Agent time, per agent.
     const live = new Set();
@@ -246,36 +246,72 @@ export const Sidebar = {
       // Herdr itself notifies when an agent needs you or finishes: no second toast here.
     }
     this.follow(cx, w, ops, now);
+    this.pauseQuiet(w, ops, now);
     this.remind(w, ops, now);
     this.revive.step(cx, [...w.termBy.values()], this.info, this.store.data.settings.revive !== false);
     if (ops.length) cx.spawn(async () => this.store.update((d) => { for (const op of ops) op(d); }));
   },
 
-  // Every agent's tab a task (setting `track`): a light one (`auto`) from its start, named after
-  // its agent, until the person changes anything on it. It is its agent: it goes when the agent
-  // quits (its shell back in front, the tab still open) or its tab closes. After a restart the
-  // agent comes back by itself (lib/revive.js) before that, and so does the task.
+  // Every agent's tab is a task: one with no plan (`auto`) from its start, named after its
+  // agent, until the person changes anything on it. Planned or not, a task moves with its agent
+  // (keepBooks); one with no plan is also looked after for you: once you look at its terminal, or
+  // after `review_after` minutes, it leaves To review for Idle while its agent stays open, back in
+  // Doing when it works again; Done once its agent quits or its tab closes (resumable from there). After a restart the agent comes back by itself (lib/revive.js)
+  // before that, and the task goes on.
   follow(cx, w, ops, now) {
-    if (this.store.data.settings.track === false) return;
     const adopting = (this.books.adopting ??= {});
     for (const u of w.untracked) {
       if (!u.agents.length || adopting[u.tab]) continue;
       adopting[u.tab] = now;
-      cx.spawn(async () => { try { await adopt(this.store, u, { auto: true }); } finally { delete adopting[u.tab]; } });
+      cx.spawn(async () => { try { await adopt(this.store, u); } finally { delete adopting[u.tab]; } });
     }
     const gone = (this.books.gone ??= {});
     const anySpace = w.spaces.length > 0;
+    const wait = (this.store.data.settings.review_after ?? 60) * 60000;
+    const looking = window()?.active ? focused()?.pane ?? null : null;
+    const close = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status)) setStatus(y, "done", now); });
+    const rest = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status) && !y.idle) y.idle = true; });
     for (const x of w.tasks) {
-      if (!x.t.auto || x.t.deleted) { delete gone[x.t.id]; continue; }
+      if (!x.t.auto || !x.open) { delete gone[x.t.id]; continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });
       // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
       // or a machine is away).
-      if ((x.live.length && x.agents.length) || !anySpace || x.tabs.some((tab) => tab.includes("/"))) { delete gone[x.t.id]; continue; }
-      gone[x.t.id] ??= now;
-      if (now - gone[x.t.id] > (x.live.length ? QUIT_MS : 60000)) {
-        delete gone[x.t.id];
-        ops.push((d) => { d.tasks = d.tasks.filter((y) => !(y.id === x.t.id && y.auto)); });
+      if (!(x.live.length && x.agents.length)) {
+        if (!anySpace || x.tabs.some((tab) => tab.includes("/"))) { delete gone[x.t.id]; continue; }
+        gone[x.t.id] ??= now;
+        if (now - gone[x.t.id] > (x.live.length ? QUIT_MS : 60000)) { delete gone[x.t.id]; close(x.t.id); }
+        continue;
+      }
+      delete gone[x.t.id];
+      // Its agent stopped: seen (its terminal in front), or waiting longer than asked.
+      if (["working", "blocked"].includes(x.top) || x.t.idle || isLater(x.t)) continue;
+      const since = (x.t.history ?? []).at(-1)?.at ?? x.t.updated ?? now;
+      const seen = Boolean(looking) && x.agents.some((e) => e.a.pane === looking);
+      if (seen || (wait > 0 && now - since > wait)) rest(x.t.id);
+    }
+  },
+
+  // Projects with nothing going on for `pause_after` days pause by themselves, and come back by
+  // themselves at the next sign of life (a task changed, an agent at work or asking). One the
+  // person paused stays paused.
+  pauseQuiet(w, ops, now) {
+    const days = this.store.data.settings.pause_after ?? 3;
+    const last = new Map();
+    const touch = (id, at) => { if (id && at > (last.get(id) ?? 0)) last.set(id, at); };
+    for (const x of w.tasks) {
+      touch(x.project, Math.max(x.t.updated ?? 0, x.t.history?.at(-1)?.at ?? 0, x.t.done_at ?? 0));
+      if (["working", "blocked"].includes(x.top)) touch(x.project, now);
+    }
+    for (const u of w.untracked) if (["working", "blocked"].includes(u.top)) touch(u.project ?? w.projectOfRepo.get(u.where.key), now);
+    for (const p of this.store.data.projects) {
+      const at = Math.max(last.get(p.id) ?? 0, p.active_at ?? 0);
+      // A project with nothing in it yet counts from when taskr first sees it.
+      if (!p.active_at && !p.paused && !last.has(p.id)) { ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y && !y.active_at) y.active_at = now; }); continue; }
+      if (p.paused && p.paused_auto && at > p.paused_auto) {
+        ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y?.paused_auto) { y.paused = false; delete y.paused_auto; y.active_at = now; } });
+      } else if (!p.paused && days > 0 && now - at > days * 86400000) {
+        ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y && !y.paused) { y.paused = true; y.paused_auto = now; } });
       }
     }
   },
@@ -290,7 +326,7 @@ export const Sidebar = {
     const tell = (title, tasks, level = "info") => {
       if (!on || !tasks.length) return;
       notify({ title, body: tasks.map((t) => t.title).slice(0, 4).join(" · ") + (tasks.length > 4 ? " …" : ""), level,
-        action: tasks.length === 1 ? { name: `tasker.select:${tasks[0].id}` } : { name: "tasker.focus" } });
+        action: tasks.length === 1 ? { name: `taskr.select:${tasks[0].id}` } : { name: "taskr.focus" } });
     };
     const back = pick(w.tasks.filter((x) => x.open && !x.t.archived && x.t.snooze && x.t.snooze !== "someday" && x.t.snooze <= day && sent[`back:${x.t.id}`] !== x.t.snooze));
     for (const t of back) {
@@ -368,7 +404,7 @@ export const Sidebar = {
   taskRow(t, x, { showWhere = false, depth = 0, ids = null } = {}) {
     const task = x.t;
     const e = lead(x);
-    const selected = shared("tasker.selected") === task.id;
+    const selected = shared("taskr.selected") === task.id;
     const blocked = e?.top === "blocked";
     const msg = blocked ? (e.report?.msg ?? "").replace(/^answer:\s*/i, "") : null;
     const since = this.sinceOf(e);
@@ -400,7 +436,7 @@ export const Sidebar = {
         if (pane) run("pane.focus", { pane }); else this.handle.focus();
         cx.notify();
       })
-      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); setShared("tasker.selected", task.id); openDialog("menu", { task: task.id }); })
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); setShared("taskr.selected", task.id); openDialog("menu", { task: task.id }); })
       .on_hover((on, cx) => { this.hovered = on ? task.id : this.hovered === task.id ? null : this.hovered; cx.notify(); })
       .child(h_flex().h(20).gap(7).items_center()
         .child(taskMark(t, task, e?.top))
@@ -428,14 +464,7 @@ export const Sidebar = {
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openDialog("loose", { tab: u.tab }); })
       .child(h_flex().h(20).gap(7).items_center()
       .child(h_flex().w(16).justify_center().child(agentMark(t, u.top) ?? pic))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(name))
-      .child(div().id(`track-${u.tab}`).px(6).h(18).rounded(4).flex().items_center().text_size(10.5).text_color(t.dim)
-        .border_1().border_color(t.input).hover((s) => s.text_color(t.foreground).bg(t.hover)).tooltip(S.makeTaskHint)
-        .on_click((_e, cx) => {
-          cx.stop_propagation();
-          cx.spawn(async () => { const id = await adopt(this.store, u); if (id) setShared("tasker.selected", id); });
-        })
-        .child(S.makeTask)))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(name)))
       .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : t.dim).child(second)));
   },
 
@@ -445,27 +474,27 @@ export const Sidebar = {
     const rows = [];
     const order = [];
     // `shut`: folded until opened (Later: out of the way is the point).
-    const section = (id, label, list, color, { max = 99, untracked = [], shut = false } = {}) => {
-      if (!list.length && !untracked.length) return;
+    const section = (id, label, list, color, { max = 99, shut = false } = {}) => {
+      if (!list.length) return;
       const key = shut ? `${id}:open` : id;
       const open = shut ? this.folded.has(key) : !this.folded.has(key);
-      rows.push(sectionHeader(t, `sec-${id}`, label, list.length + untracked.length, color, open, (cx) => this.fold(key, cx)));
+      rows.push(sectionHeader(t, `sec-${id}`, label, list.length, color, open, (cx) => this.fold(key, cx)));
       if (!open) return;
       // Later keeps its order by day; every other list can be reordered by dragging.
       const ids = shut ? null : list.map((x) => x.t.id);
       for (const x of list.slice(0, max)) { rows.push(this.taskRow(t, x, { showWhere: true, ids })); order.push(x.t.id); }
-      for (const u of untracked) rows.push(this.untrackedRow(t, u, 0, true));
       if (list.length > max) rows.push(div().id(`more-${id}`).pl(31).h(22).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
-        .on_click(() => setShared("tasker.view", "projects")).child(S.more(list.length - max)));
+        .on_click(() => setShared("taskr.view", "projects")).child(S.more(list.length - max)));
     };
-    section("needs", S.needsYou, v.needs, t.blocked, { untracked: v.untrackedNeeds });
-    section("review", S.toReview, v.review, t.done, { untracked: v.untrackedDone });
-    section("working", S.working, v.working, t.working, { untracked: v.untrackedWorking });
+    section("needs", S.needsYou, v.needs, t.blocked);
+    section("review", S.toReview, v.review, t.done);
+    section("working", S.working, v.working, t.working);
     section("next", S.nextUp, v.next, t.foreground, { max: 7 });
     section("stalled", S.stalled, v.stalled, t.ansi3);
     section("inbox", S.inbox, v.inbox, t.dim, { max: 5 });
-    section("loose", S.notInTask, [], t.dim, { untracked: v.untrackedIdle });
     section("later", S.later, v.later, t.dim, { shut: true });
+    // Last: agents you've seen, waiting for a word from you.
+    section("idle", S.idle, v.idle, t.dim, { shut: true });
     this.order = order;
     if (!rows.length) rows.push(div().px(12).pt(12).text_size(12).text_color(t.dim).child(S.emptyNow));
     return rows;
@@ -571,7 +600,7 @@ export const Sidebar = {
     const t = theme();
     const w = this.world;
     const view = this.view();
-    const stackFolded = Boolean(this.fixedView) && shared("tasker.stackFolded") === this.fixedView;
+    const stackFolded = Boolean(this.fixedView) && shared("taskr.stackFolded") === this.fixedView;
     // Asked to take the keys (tab in the other list).
     const lists = sharedCache("lists").info;
     if (this.fixedView && lists.focus === this.fixedView) { lists.focus = null; this.handle.focus(); }
@@ -585,8 +614,8 @@ export const Sidebar = {
     if (this.isFirstList()) setAgentOrder(addrs);
     const tabBtn = (id, label) => div().id(`v-${id}`).px(9).h(24).gap(5).rounded(6).flex().items_center().text_size(12).cursor_pointer()
       .bg(view === id ? t.selected : t.chrome).text_color(view === id ? t.foreground : t.muted).font_medium()
-      .hover((s) => s.bg(t.hover)).on_click(() => setShared("tasker.view", id)).child(icon(id === "now" ? "zap" : "folder-tree", 13)).child(label);
-    return v_flex().id("tasker-sidebar").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .hover((s) => s.bg(t.hover)).on_click(() => setShared("taskr.view", id)).child(icon(id === "now" ? "zap" : "folder-tree", 13)).child(label);
+    return v_flex().id("taskr-sidebar").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       // Released anywhere but on a project: the drag is off.
       .on_mouse_up("left", (_e, cx) => { if (this.dragProject || this.dragTask || this.dragRepo) { this.dragProject = null; this.dragTask = null; this.dragRepo = null; this.dragOver = null; cx.notify(); } })
       .size_full().min_h(0).bg(t.chrome).text_size(12.8).text_color(t.foreground)
@@ -608,11 +637,11 @@ export const Sidebar = {
         .child(iconButton(t, "jump", "search", S.searchTasks, () => this.command("jump", null)))
         .child(iconButton(t, "add-task", "plus", S.newTask, () => this.openTaskForm({}))))
       .when(Boolean(this.store.error), (el) => el.child(div().px(12).py(6).text_size(11).text_color(t.blocked).child(this.store.error)))
-      .when(!stackFolded, (el) => el.child(v_flex().id("tasker-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows)));
+      .when(!stackFolded, (el) => el.child(v_flex().id("taskr-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows)));
   },
 };
 
-// Key commands bound to this mod in keys.json ("tasker.jump"…), and "focus" from pane.go.
+// Key commands bound to this mod in keys.json ("taskr.jump"…), and "focus" from pane.go.
 async function nextCommandSafe() {
   try { return await nextCommand(); } catch { return null; }
 }

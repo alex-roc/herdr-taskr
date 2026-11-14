@@ -1,6 +1,34 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 — 2026-11-14
+
+**tasker is now taskr** (herdr-taskr). `./install.sh` moves an old install over: it removes the
+old mod, layout and theme, carries the `layout:tasker` shortcuts to `layout:taskr`, and shows the
+new layout; your tasks come from `data/tasker` on first start (that folder is left as it was), and
+terminals labelled `tasker.task` / `tasker.project` are still read. Commands are `taskr.*`.
+
+### Changed: one model
+- **Project → folder → terminals and tasks.** A folder is any folder, a git repository or not
+  ("repository" is "folder" everywhere). A terminal is not a task; **every agent is one**: a task
+  with no plan, named after its agent, from the moment it starts. Fill in its plan when you want
+  (*Plan it…* in the detail); planned tasks start agents as before.
+- Gone: the *Track agents automatically* setting, *Not in a task* in Now, *Make task*, and the
+  board's *No task* lane.
+- **A task with no plan looks after itself**: out of *To review* as soon as you look at its terminal,
+  or after the time set in *To review, for tasks with no plan* (15 min, 1 h, 4 h, 1 day, or until
+  seen), to a new folded *Idle* section while its agent stays open, and back to Doing when the agent works again;
+  Done when its agent quits or its tab closes (it used to vanish), resumable from there. *Done today* counts only the tasks you closed.
+- **Delete closes the task's tabs**, agent included (the dialog says so), and the task leaves the
+  file; older files' deleted tasks are dropped. A tab whose task was deleted used to stay out of
+  every task for good.
+- **Quiet projects pause by themselves**: no task changed and no agent at work for 3 days (*Pause
+  quiet projects* in the settings: 1, 3, 7, 14, 30 days or never), and they come back by themselves at
+  the next sign of life. A project you pause stays paused.
+- **Move to task…** (a task's menu) moves its agent, conversations and agent time into another task.
+- tasks.json: projects have `folders` (was `repos`) and tasks a `folder` (was `repo`); the old keys
+  are still read. New setting `review_after`; `track` is gone.
+- The project form adds a plain folder (no repositories inside) at once, and a folder of
+  repositories can go in itself. *Start in a worktree* only shows for a git repository.
 
 ### New
 - **Pause a project** (its menu, or its form): it waits folded under *Paused* at the end of Projects,

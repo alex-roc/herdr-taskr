@@ -1,4 +1,4 @@
-/* tasker's site. Colors are the layout's own theme; each state color means what it
+/* taskr's site. Colors are the layout's own theme; each state color means what it
    means in the app: blocked needs you, working is busy, done is ready for review. */
 
 :root {
@@ -100,7 +100,7 @@ pre .c { color: var(--muted); }
 .button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 .button.ghost:hover { border-color: var(--muted); color: var(--bright); }
 
-/* The replica of tasker's Now list */
+/* The replica of taskr's Now list */
 .now {
   background: var(--chrome); border: 1px solid var(--line); border-radius: 14px;
   padding: 10px 8px 14px; font-size: 13.5px; line-height: 1.35;

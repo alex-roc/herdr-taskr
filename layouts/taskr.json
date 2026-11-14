@@ -1,7 +1,7 @@
 {
   "id": "root",
   "type": "row",
-  "preview": "layouts/tasker.svg",
+  "preview": "layouts/taskr.svg",
   "titlebar": "none",
   "traffic_lights": [
     12,
@@ -40,34 +40,34 @@
           }
         },
         {
-          "id": "tasker-lists",
+          "id": "taskr-lists",
           "type": "stack",
-          "active": "tasker-sidebar",
+          "active": "taskr-sidebar",
           "min": 120,
           "children": [
             {
-              "id": "tasker-sidebar",
+              "id": "taskr-sidebar",
               "type": "block",
               "content": {
-                "mod": "tasker",
+                "mod": "taskr",
                 "props": {
                   "role": "sidebar"
                 }
               }
             },
             {
-              "id": "tasker-split",
+              "id": "taskr-split",
               "type": "column",
               "children": [
                 {
-                  "id": "tasker-projects",
+                  "id": "taskr-projects",
                   "type": "block",
                   "size": {
                     "weight": 1
                   },
                   "min": 41,
                   "content": {
-                    "mod": "tasker",
+                    "mod": "taskr",
                     "props": {
                       "role": "sidebar",
                       "view": "projects"
@@ -75,14 +75,14 @@
                   }
                 },
                 {
-                  "id": "tasker-now",
+                  "id": "taskr-now",
                   "type": "block",
                   "size": {
                     "weight": 1
                   },
                   "min": 41,
                   "content": {
-                    "mod": "tasker",
+                    "mod": "taskr",
                     "props": {
                       "role": "sidebar",
                       "view": "now"
@@ -150,7 +150,7 @@
                   },
                   "header": {
                     "content": {
-                      "mod": "tasker"
+                      "mod": "taskr"
                     },
                     "height": 30,
                     "position": "top",
@@ -193,7 +193,7 @@
               ]
             },
             {
-              "id": "tasker-detail",
+              "id": "taskr-detail",
               "type": "column",
               "hidden": true,
               "size": {
@@ -203,10 +203,10 @@
               "max": 640,
               "children": [
                 {
-                  "id": "tasker-detail-body",
+                  "id": "taskr-detail-body",
                   "type": "block",
                   "content": {
-                    "mod": "tasker",
+                    "mod": "taskr",
                     "props": {
                       "role": "detail"
                     }
@@ -223,7 +223,7 @@
             "px": 28
           },
           "content": {
-            "mod": "tasker",
+            "mod": "taskr",
             "props": {
               "role": "status"
             }
@@ -234,6 +234,6 @@
   ],
   "theme": {
     "light": "paper",
-    "dark": "tasker"
+    "dark": "taskr"
   }
 }

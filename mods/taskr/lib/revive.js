@@ -1,7 +1,7 @@
 // Agents back after a restart. Herdr keeps every terminal: one that's lost (a reboot, the
 // core crashing) comes back as a shell in its last folder, at the same address and in the
-// same tab, but its program never runs again. tasker remembers which conversation each
-// local Claude Code or Codex agent is in (data/tasker/terminals.json); a terminal that
+// same tab, but its program never runs again. taskr remembers which conversation each
+// local Claude Code or Codex agent is in (data/taskr/terminals.json); a terminal that
 // comes back as a fresh shell (another pid, no agent in front) gets
 // `cd <folder> && claude --resume <id>` (or `codex resume <id>`) typed in.
 // Quitting the agent yourself leaves the same shell (same pid): nothing is typed.

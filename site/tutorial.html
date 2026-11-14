@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tutorial · tasker</title>
-<meta name="description" content="From install to a reviewed, finished task: a step by step tutorial for tasker, the task layout for the Herdr app.">
-<meta property="og:title" content="tasker tutorial">
-<meta property="og:image" content="https://alex-roc.github.io/herdr-tasker/img/overview.png">
+<title>Tutorial · taskr</title>
+<meta name="description" content="From install to a reviewed, finished task: a step by step tutorial for taskr, the task layout for the Herdr app.">
+<meta property="og:title" content="taskr tutorial">
+<meta property="og:image" content="https://alex-roc.github.io/herdr-taskr/img/overview.png">
 <meta name="theme-color" content="#16191c">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,11 +17,11 @@
 <body>
 <header class="top">
   <div class="wrap">
-    <a class="mark" href="./"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="6" height="6" rx="1.6" fill="#e5737b" opacity=".9"/><rect x="11" y="4.5" width="11" height="3" rx="1.5" fill="#f1f3f5"/><circle cx="5" cy="12" r="2.4" fill="none" stroke="#6fa8e8" stroke-width="1.6"/><rect x="11" y="10.5" width="9" height="3" rx="1.5" fill="#8f96a0"/><circle cx="5" cy="19" r="1.8" fill="#5fc4b5"/><rect x="11" y="17.5" width="7" height="3" rx="1.5" fill="#8f96a0"/></svg>tasker</a>
+    <a class="mark" href="./"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="6" height="6" rx="1.6" fill="#e5737b" opacity=".9"/><rect x="11" y="4.5" width="11" height="3" rx="1.5" fill="#f1f3f5"/><circle cx="5" cy="12" r="2.4" fill="none" stroke="#6fa8e8" stroke-width="1.6"/><rect x="11" y="10.5" width="9" height="3" rx="1.5" fill="#8f96a0"/><circle cx="5" cy="19" r="1.8" fill="#5fc4b5"/><rect x="11" y="17.5" width="7" height="3" rx="1.5" fill="#8f96a0"/></svg>taskr</a>
     <nav aria-label="Site">
       <a href="tutorial.html" aria-current="page">Tutorial</a>
       <a href="examples.html">Examples</a>
-      <a class="gh" href="https://github.com/alex-roc/herdr-tasker">GitHub</a>
+      <a class="gh" href="https://github.com/alex-roc/herdr-taskr">GitHub</a>
     </nav>
   </div>
 </header>
@@ -36,7 +36,7 @@
     <nav class="toc" aria-label="Steps">
       <ol>
         <li><a href="#install">Install</a></li>
-        <li><a href="#switch">Switch to tasker</a></li>
+        <li><a href="#switch">Switch to taskr</a></li>
         <li><a href="#project">Make a project</a></li>
         <li><a href="#tasks">Add tasks</a></li>
         <li><a href="#start">Start an agent</a></li>
@@ -52,37 +52,37 @@
       <section class="step" id="install">
         <h2>Install</h2>
         <p>You need the <a href="https://herdr.dev">Herdr app</a> 0.1.13 or later, and <code>git</code>. <code>gh</code>, GitHub's command line, is optional: it adds issues, pull requests and CI checks.</p>
-        <pre><code>git clone https://github.com/alex-roc/herdr-tasker
-cd herdr-tasker
+        <pre><code>git clone https://github.com/alex-roc/herdr-taskr
+cd herdr-taskr
 ./install.sh --keys</code></pre>
-        <p>The script copies the layout, its theme and the mod into <code>~/.config/herdr-app</code>, and <code>--keys</code> adds tasker's shortcuts without replacing any you already have. Run it again to update; <code>./install.sh --uninstall</code> removes tasker and keeps your tasks.</p>
-        <div class="note"><p>Prefer to let an agent do it? In a Herdr terminal, ask your agent to <em>"add the layout at github.com/alex-roc/herdr-tasker"</em>. Herdr's agents know how to install shared layouts.</p></div>
+        <p>The script copies the layout, its theme and the mod into <code>~/.config/herdr-app</code>, and <code>--keys</code> adds taskr's shortcuts without replacing any you already have. Run it again to update; <code>./install.sh --uninstall</code> removes taskr and keeps your tasks.</p>
+        <div class="note"><p>Prefer to let an agent do it? In a Herdr terminal, ask your agent to <em>"add the layout at github.com/alex-roc/herdr-taskr"</em>. Herdr's agents know how to install shared layouts.</p></div>
       </section>
 
       <section class="step" id="switch">
-        <h2>Switch to tasker</h2>
-        <p>Open Herdr's Settings → Look and pick <strong>tasker</strong>, or from any terminal:</p>
-        <pre><code>herdr-app do layout.switch '{"name":"tasker"}'</code></pre>
-        <p>Your spaces, tabs and agents are the same; tasker only changes how they're shown. The left sidebar becomes the task list, a detail panel on the right shows the task you pick when you want more (open it with the panel button in the status bar or <kbd>cmd</kbd> <kbd>i</kbd>; it stays open or closed as you leave it), and the status bar counts what's done today, what's in progress and what needs you. Switch back to Herdr's own layout the same way.</p>
+        <h2>Switch to taskr</h2>
+        <p>Open Herdr's Settings → Look and pick <strong>taskr</strong>, or from any terminal:</p>
+        <pre><code>herdr-app do layout.switch '{"name":"taskr"}'</code></pre>
+        <p>Your spaces, tabs and agents are the same; taskr only changes how they're shown. The left sidebar becomes the task list, a detail panel on the right shows the task you pick when you want more (open it with the panel button in the status bar or <kbd>cmd</kbd> <kbd>i</kbd>; it stays open or closed as you leave it), and the status bar counts what's done today, what's in progress and what needs you. Switch back to Herdr's own layout the same way.</p>
       </section>
 
       <section class="step" id="project">
         <h2>Make a project</h2>
         <div class="side-by-side">
-          <figure><img src="img/projects.png" width="660" height="1494" alt="The Projects view: the Acme project with two repositories, their branches, changes and tasks." loading="lazy"></figure>
+          <figure><img src="img/projects.png" width="660" height="1609" alt="The Projects view: the Acme project with two folders, their branches, changes and tasks." loading="lazy"></figure>
           <div>
-            <p>Press <kbd>tab</kbd> in the list (or click <strong>Projects</strong>) to see the outline. Every repository open in Herdr shows up, under <em>No project</em> at first.</p>
-            <p>Click the folder button in the header to make a project: give it a name and add its repositories with <strong>Add folder…</strong>: a repository goes in at once, and a folder that holds several (<code>~/dev</code>) lists them to tick, with a filter. A repository in a project is only a pointer: no terminal, no task, until you start something there; right-click it to move it to another project or remove it from this one. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its repositories (<code>~/dev</code>; your home folder while it has none, or when they share nothing below it), and show at the project's level, above its repositories; the agent reaches every repository and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its repositories (a repository's menu closes just its own). You can also drag a repository (or a folder, like <code>~</code>) onto a project's name to move it there, with its tasks. Drag a project's row onto another to change their order.</p>
+            <p>Press <kbd>tab</kbd> in the list (or click <strong>Projects</strong>) to see the outline. Every folder open in Herdr shows up, under <em>No project</em> at first.</p>
+            <p>Click the folder button in the header to make a project: give it a name and add its folders with <strong>Add folder…</strong>: a repository, or a plain folder with no repositories inside, goes in at once; a folder that holds several (<code>~/dev</code>) lists them to tick, with a filter, or you can <em>Add &lt;folder&gt; itself</em>. A folder in a project is only a pointer: no terminal, no task, until you start something there; right-click it to move it to another project or remove it from this one. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its folders (<code>~/dev</code>; your home folder while it has none, or when they share nothing below it), and show at the project's level, above its folders; the agent reaches every folder and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its folders (a folder's menu closes just its own). You can also drag a folder (like <code>~</code>) onto a project's name to move it there, with its tasks. Drag a project's row onto another to change their order.</p>
             <p>Many projects? Pause the ones you're not on now (right-click → <strong>Pause project</strong>): they wait folded under <em>Paused</em> at the end, and their tasks leave Now and the board of every project, unless an agent there needs you or is working. <strong>Make active</strong> brings one back.</p>
-            <p>Each repository row shows its branch, <code>↑2</code> for commits not pushed and <code>•3</code> for uncommitted changes. Hover them for the words.</p>
+            <p>Each git folder shows its branch, <code>↑2</code> for commits not pushed and <code>•3</code> for uncommitted changes. Hover them for the words. A folder that isn't a repository shows none of them.</p>
           </div>
         </div>
       </section>
 
       <section class="step" id="tasks">
         <h2>Add tasks</h2>
-        <p>Press <kbd>n</kbd>, click <strong>+</strong> in the header, or <strong>+</strong> on a repository to start with that repository filled in.</p>
-        <figure class="mid"><img src="img/form.png" width="1160" height="1360" alt="The New task form: title, project, repository, status, due date, estimate, next step and notes." loading="lazy"><figcaption>Only the title is required. Enter saves.</figcaption></figure>
+        <p>Press <kbd>n</kbd>, click <strong>+</strong> in the header, or <strong>+</strong> on a folder to start with that folder filled in.</p>
+        <figure class="mid"><img src="img/form.png" width="1160" height="1360" alt="The New task form: title, project, folder, status, due date, estimate, next step and notes." loading="lazy"><figcaption>Only the title is required. Enter saves.</figcaption></figure>
         <p>Keep the title short. The <strong>next step</strong> is the one action to take now; what the work needs (context, details, how it should be done, links) goes in <strong>Notes</strong>. When you start an agent on the task, it gets the title, the next step and the notes as its first message.</p>
         <p>Write the due date the way you'd say it:</p>
         <table class="keys">
@@ -93,28 +93,28 @@ cd herdr-tasker
           <tr><td><code>2026-12-24</code></td><td>exactly that day</td></tr>
         </table>
         <p>The date it understood appears beside the label as you type. Use <strong>Next step</strong> for the very next action: it's shown under the task in the list, and the agent gets it too.</p>
-        <p>Already have a backlog? Right-click the repository → <strong>Import GitHub issues</strong> or <strong>Import Linear issues</strong>, tick the ones you want, and they land in the Inbox with the issue attached. From Linear, the issues assigned to you come most urgent first, with their due date.</p>
+        <p>Already have a backlog? Right-click the folder → <strong>Import GitHub issues</strong> or <strong>Import Linear issues</strong>, tick the ones you want, and they land in the Inbox with the issue attached. From Linear, the issues assigned to you come most urgent first, with their due date.</p>
         <h3>What goes first</h3>
         <p>Up next is in the order you set: drag a task onto another and it takes that place, with a line showing where it lands. Drag an idea from the Inbox onto Up next and it's planned. <kbd>t</kbd> (or <strong>Move to the top</strong> in its menu) puts a task first; new tasks go last. The same order holds in Projects and on the board.</p>
-        <div class="note"><p>Linear needs a personal API key (Linear → Settings → Security &amp; access → Personal API keys). Export it as <code>LINEAR_API_KEY</code> in your shell profile, or save it alone in <code>~/.config/herdr-app/data/tasker/linear-key</code>. tasker only reads from Linear.</p></div>
+        <div class="note"><p>Linear needs a personal API key (Linear → Settings → Security &amp; access → Personal API keys). Export it as <code>LINEAR_API_KEY</code> in your shell profile, or save it alone in <code>~/.config/herdr-app/data/taskr/linear-key</code>. taskr only reads from Linear.</p></div>
       </section>
 
       <section class="step" id="start">
         <h2>Start an agent</h2>
-        <p>Select a task and press <kbd>l</kbd>, hover it and click ▶, or click <strong>Start agent</strong> in the detail. tasker opens your agent in a new tab in the repository's space, with the task as its first message: the title, the next step, your notes and the issue if there is one.</p>
+        <p>Select a task and press <kbd>l</kbd>, hover it and click ▶, or click <strong>Start agent</strong> in the detail. taskr opens your agent in a new tab in the folder's space, with the task as its first message: the title, the next step, your notes and the issue if there is one.</p>
         <p>The tab is tied to the task, and the task moves to <strong>Doing</strong> as soon as the agent starts working. Its row says where it is and how long the agent has been at it; the terminal's header, what the agent is running:</p>
         <pre><code>Acme › api · working 14m
 Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
-        <p>That's the task, the model, the reasoning effort and how much context it holds. tasker reads these from Claude Code's and Codex's own logs; other agents show their state and time.</p>
+        <p>That's the task, the model, the reasoning effort and how much context it holds. taskr reads these from Claude Code's and Codex's own logs; other agents show their state and time.</p>
         <h3>In its own worktree</h3>
-        <p>Press <kbd>w</kbd> (or <strong>Start in a worktree</strong>) to keep the work apart from your checkout: tasker creates the branch <code>task/&lt;name&gt;</code> in <code>~/.herdr/worktrees/&lt;repo&gt;/&lt;name&gt;</code> first and starts the agent there. Herdr's own worktree tools see it too.</p>
-        <div class="note" style="--c:var(--working)"><p>Rather work with terminals? Start an agent anywhere: its tab is a task already, a light one named after what the agent calls its work, moving with it like any other. Touch it (a note, Later, a drag to another place) and it's yours; leave it, and it goes away when its agent quits or its tab closes (after a restart, its agent comes back by itself). With <em>Track agents automatically</em> off in the settings, an agent in no task waits under <strong>Not in a task</strong> with a <strong>Make task</strong> button, and <strong>Add to task…</strong> in its menu.</p></div>
+        <p>Press <kbd>w</kbd> (or <strong>Start in a worktree</strong>) to keep the work apart from your checkout: taskr creates the branch <code>task/&lt;name&gt;</code> in <code>~/.herdr/worktrees/&lt;repo&gt;/&lt;name&gt;</code> first and starts the agent there. Herdr's own worktree tools see it too.</p>
+        <div class="note" style="--c:var(--working)"><p>Rather work with terminals? Start an agent anywhere: it's a task already, with no plan, named after what the agent calls its work and moving with it like any other. Press <strong>Plan it…</strong> in its detail to add a next step, notes or a due date, or touch it (a note, Later, a drag to another place) and it's yours. Leave it, and once you've looked at it it goes to <strong>Idle</strong>, folded at the end of Now, while its agent stays open (back in Doing when the agent works again); it goes to Done when its agent quits or its tab closes, and <strong>Resume agent</strong> picks it up (after a restart, its agent comes back by itself). A plain terminal (shell) isn't a task: <strong>Add to task…</strong> in its menu ties it to one, and <strong>Move to task…</strong> on a task moves its agent into another.</p></div>
       </section>
 
       <section class="step" id="answer">
         <h2>Answer when it asks</h2>
         <div class="side-by-side">
-          <figure><img src="img/detail-blocked.png" width="736" height="1533" alt="A task's detail with its agent asking: Sessions, Postgres or SQLite?" loading="lazy"></figure>
+          <figure><img src="img/detail-blocked.png" width="734" height="1557" alt="A task's detail with its agent asking: Sessions, Postgres or SQLite?" loading="lazy"></figure>
           <div>
             <p>When an agent stops to ask something, its task jumps to <strong>Needs you</strong> at the top of Now, with the question in red right in the row. The status bar counts it too.</p>
             <p>Select it to read the question and the last lines of the agent's screen in the detail. Then either:</p>
@@ -122,7 +122,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
               <li>press <kbd>enter</kbd> (or <strong>Go to agent</strong>) to answer in its terminal, or</li>
               <li>type in <strong>Message the agent</strong> and press <strong>Send</strong>, without leaving the list.</li>
             </ul>
-            <p>Herdr itself plays a sound and posts a notification; tasker doesn't add another.</p>
+            <p>Herdr itself plays a sound and posts a notification; taskr doesn't add another.</p>
           </div>
         </div>
       </section>
@@ -130,7 +130,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
       <section class="step" id="review">
         <h2>Review and finish</h2>
         <div class="side-by-side">
-          <figure><img src="img/detail-review.png" width="736" height="1373" alt="A finished task in Review: its agent's last screen, changes, and the Mark done button." loading="lazy"></figure>
+          <figure><img src="img/detail-review.png" width="734" height="1361" alt="A finished task in Review: its agent's last screen, changes, and the Mark done button." loading="lazy"></figure>
           <div>
             <p>When the agent stops, the task moves to <strong>To review</strong>. Nothing is marked done by itself: that's your call.</p>
             <p>Not now? Move it to <strong>Next</strong> (you'll do it), <strong>Waiting</strong> (it depends on someone) or <strong>Dropped</strong> (you won't), or put it off with <strong>Later</strong> (right-click or <kbd>z</kbd>): tomorrow, next week, a day you type, or <em>someday</em>. It waits in a folded <em>Later</em> section and comes back on its day with a notification.</p>
@@ -147,9 +147,9 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
       <section class="step" id="resume">
         <h2>Pick up after a restart</h2>
         <div class="side-by-side">
-          <figure><img src="img/detail-resume.png" width="736" height="888" alt="A task whose agent is gone: Resume agent is the first button." loading="lazy"></figure>
+          <figure><img src="img/detail-resume.png" width="734" height="876" alt="A task whose agent is gone: Resume agent is the first button." loading="lazy"></figure>
           <div>
-            <p>While a Claude Code or Codex agent works on a task, tasker remembers which conversation it's in. If the agent is gone (you restarted the machine, or closed its tab), the task's detail shows <strong>Resume agent</strong> first.</p>
+            <p>While a Claude Code or Codex agent works on a task, taskr remembers which conversation it's in. If the agent is gone (you restarted the machine, or closed its tab), the task's detail shows <strong>Resume agent</strong> first.</p>
             <p>It runs <code>claude --resume &lt;id&gt;</code> or <code>codex resume &lt;id&gt;</code> in the folder the agent was in, and ties the new tab to the task. The agent keeps its whole conversation, so it doesn't need a first message. In the list, <kbd>r</kbd> does the same.</p>
           </div>
         </div>
@@ -158,12 +158,12 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
       <section class="step" id="board">
         <h2>Plan on the board</h2>
         <p>Press <kbd>cmd</kbd> <kbd>shift</kbd> <kbd>b</kbd> or the board button at the top of Now to open the board of every project as a tab.</p>
-        <figure><img src="img/board.png" width="2220" height="1210" alt="The board: six columns with task cards, agents started from a terminal among them; cards put off with Later are dimmed." loading="lazy"><figcaption>A card's border turns red when its agent needs you. Done keeps the last seven days.</figcaption></figure>
+        <figure><img src="img/board.png" width="2240" height="1230" alt="The board: six columns with task cards, agents started from a terminal among them; cards put off with Later are dimmed." loading="lazy"><figcaption>A card's border turns red when its agent needs you. Done keeps the last seven days.</figcaption></figure>
         <ul>
           <li>Drag a card to another column to change its status, or onto another card to put it at that place; click it to open its detail.</li>
           <li>Every project has its own board, in a tab of its own with only its tasks and agents. The pills at the top (All, then each project) go from one board to another; in Projects, a project's board button (shown while the pointer is on its row) opens it too.</li>
           <li>Doing shows how many tasks are in progress against your limit, and turns amber when you're over it.</li>
-          <li>Agents started from a terminal are on the board already, as light tasks. With <em>Track agents automatically</em> off, they wait in a <strong>No task</strong> lane on the left instead: drag one onto a column to make it a task with that status.</li>
+          <li>Agents started from a terminal are on the board already, as tasks with no plan.</li>
         </ul>
       </section>
 
@@ -185,16 +185,17 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
           <tr><td><kbd>tab</kbd></td><td>switch between Now and Projects</td></tr>
         </table>
         <p>Anywhere in the layout: <kbd>cmd</kbd> <kbd>k</kbd> finds a task, <kbd>cmd</kbd> <kbd>shift</kbd> <kbd>n</kbd> makes one, <kbd>cmd</kbd> <kbd>i</kbd> shows or hides the detail.</p>
-        <figure class="mid"><img src="img/jump.png" width="1080" height="880" alt="Find a task: a search box over the list of tasks, open ones first." loading="lazy"><figcaption>Find a task searches titles, repositories, next steps, projects and issue numbers. Arrows move, enter opens.</figcaption></figure>
+        <figure class="mid"><img src="img/jump.png" width="1080" height="880" alt="Find a task: a search box over the list of tasks, open ones first." loading="lazy"><figcaption>Find a task searches titles, folders, next steps, projects and issue numbers. Arrows move, enter opens.</figcaption></figure>
         <div class="side-by-side">
-          <figure><img src="img/settings.png" width="960" height="2016" alt="Tasker settings: Track agents automatically, Now and Projects as tabs or stacked, Doing limit, Stalled after, Agents after a restart, Reminders, Activity in the details, Plan usage, and which agent to start." loading="lazy"></figure>
+          <figure><img src="img/settings.png" width="960" height="2360" alt="taskr settings: Now and Projects as tabs or stacked, Doing limit, Stalled after, Agents after a restart, To review for tasks with no plan, Reminders, Activity in the details, Plan usage, and which agent to start." loading="lazy"></figure>
           <div>
             <p>The gear at the right of the status bar opens the settings:</p>
             <ul>
-              <li><strong>Track agents automatically</strong>: every agent's tab is a light task from its start; off, only the tasks you make.</li>
+              <li><strong>To review, for tasks with no plan</strong>: how long a task an agent started on its own stays in To review (15 minutes, 1 hour, 4 hours, a day, or until you've looked at its terminal), then goes to Idle while its agent stays open. It leaves as soon as you look at its terminal either way.</li>
+              <li><strong>Pause quiet projects</strong>: a project where nothing happens for this long (1, 3, 7, 14 or 30 days, or never; 3 by default) pauses by itself, and comes back by itself as soon as something does. A project you pause stays paused.</li>
               <li><strong>Now and Projects</strong>: one list with tabs, or <em>stacked</em>, both at once, one above the other (drag the line between them). Stacked, <kbd>tab</kbd> moves between them.</li>
               <li><strong>Doing limit</strong>: how many tasks can be in progress before the status bar warns you.</li>
-              <li><strong>Agents after a restart</strong>: when your computer restarts, Herdr brings every terminal back as a shell; tasker types the agent's resume into each one that had a Claude Code or Codex conversation.</li>
+              <li><strong>Agents after a restart</strong>: when your computer restarts, Herdr brings every terminal back as a shell; taskr types the agent's resume into each one that had a Claude Code or Codex conversation.</li>
               <li><strong>Reminders</strong>: a notification when a task you put off comes back, and once a day for what's due or late.</li>
               <li><strong>Activity in the details</strong>: every status change of the task at the bottom of its detail; off by default (how long it's been in its status shows either way).</li>
               <li><strong>Stalled after</strong>: days without movement before a task shows under <em>Stalled</em>.</li>
@@ -204,7 +205,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
           </div>
         </div>
         <div class="side-by-side">
-          <figure><img src="img/stacked.png" width="660" height="2158" alt="Projects and Now stacked in the sidebar: the Projects outline above, the Now list below." loading="lazy"></figure>
+          <figure><img src="img/stacked.png" width="660" height="2160" alt="Projects and Now stacked in the sidebar: the Projects outline above, the Now list below." loading="lazy"></figure>
           <div>
             <p><strong>Stacked</strong>, the sidebar shows Projects above and Now below, as Herdr's own sidebar shows spaces and agents. Drag the line between them to give either more room, fold one to its header with the chevron by its name, or double-click a name to give that list all the room; <kbd>tab</kbd> moves the keys from one to the other, and the layout's shortcuts go to Now.</p>
             <p>That's the whole loop. Next, the <a href="examples.html">examples</a> show workflows built on it.</p>
@@ -217,10 +218,10 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
 
 <footer>
   <div class="wrap">
-    <span>tasker is MIT licensed, made by Alex Ojeda Copa.</span>
+    <span>taskr is MIT licensed, made by Alex Ojeda Copa.</span>
     <a href="https://herdr.dev">Herdr</a>
-    <a href="https://github.com/alex-roc/herdr-tasker">GitHub</a>
-    <a href="https://github.com/alex-roc/herdr-tasker/blob/main/CHANGELOG.md">Changelog</a>
+    <a href="https://github.com/alex-roc/herdr-taskr">GitHub</a>
+    <a href="https://github.com/alex-roc/herdr-taskr/blob/main/CHANGELOG.md">Changelog</a>
   </div>
 </footer>
 <script src="site.js" defer></script>

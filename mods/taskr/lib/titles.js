@@ -35,7 +35,7 @@ export class Titles {
         c.seen[a] = Date.now();
         delete c.busy[a];
       }
-      if (changed) setShared("tasker.titles", Date.now());
+      if (changed) setShared("taskr.titles", Date.now());
     });
   }
 }

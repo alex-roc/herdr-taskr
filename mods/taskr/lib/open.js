@@ -1,4 +1,4 @@
-// tasker's dialogs and popups are this mod opened as an overlay with { dialog, ... }.
+// taskr's dialogs and popups are this mod opened as an overlay with { dialog, ... }.
 // Their sizes live here, so every place that opens one opens the same.
 
 import { openOverlay } from "herdr";
@@ -10,7 +10,7 @@ const SIZES = {
   issues: { kind: "dialog", width: 540, height: 460 },
   archive: { kind: "dialog", width: 460, height: 230 },
   "confirm-delete": { kind: "dialog", width: 420, height: 190 },
-  settings: { kind: "dialog", width: 480, height: 1010 },
+  settings: { kind: "dialog", width: 480, height: 1180 },
   menu: { kind: "popup", width: 270, height: 380 },
   later: { kind: "dialog", width: 420, height: 240 },
   loose: { kind: "popup", width: 240, height: 150 },
@@ -21,5 +21,5 @@ const SIZES = {
 };
 
 export function openDialog(dialog, props = {}) {
-  return openOverlay({ mod: "tasker", ...SIZES[dialog], props: { dialog, ...props } });
+  return openOverlay({ mod: "taskr", ...SIZES[dialog], props: { dialog, ...props } });
 }

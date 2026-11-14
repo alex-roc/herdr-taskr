@@ -1,10 +1,10 @@
-// What tasker does in Herdr and git on a task's behalf.
+// What taskr does in Herdr and git on a task's behalf.
 
 import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, terminals, shared, setShared } from "herdr";
 import { untrackedName } from "./world.js";
 import { git, place } from "./git.js";
 import { setStatus, newTask } from "./store.js";
-import { untilde, tilde, slug, projectFolder } from "./util.js";
+import { untilde, tilde, slug, projectFolder, label } from "./util.js";
 import { S } from "../strings.js";
 
 // Checkouts go where Herdr's own worktree dialog puts them, so its spaces list nests them.
@@ -54,7 +54,7 @@ export function withDirs(argv, dirs) {
 // A project with no repositories yet, or none in common, works in the home folder.
 export function projectPlace(project, h = home()) {
   if (!project) return null;
-  const repos = (project.repos ?? []).map((r) => untilde(r, h));
+  const repos = (project.folders ?? []).map((r) => untilde(r, h));
   if (!repos.length) return { folder: h, others: [], all: [] };
   const folder = projectFolder(repos, h);
   const inside = (r) => r === folder || r.startsWith(folder + "/");
@@ -69,7 +69,7 @@ export function projectSpace(project, folder) {
 }
 
 // Opens a tab in the project's space (else makes the space) and remembers it, so the new
-// tab's terminals get labelled tasker.project=<id> and show under the project.
+// tab's terminals get labelled taskr.project=<id> and show under the project.
 export function openInProject(project, argv) {
   const at = projectPlace(project);
   if (!at) return;
@@ -81,7 +81,7 @@ export function openInProject(project, argv) {
   if (space) run("tab.new", { space: space.id, ...args });
   else run("space.new", { name: project.name, ...args });
   pending.space = space?.id ?? null;
-  setShared("tasker.pending", [...(shared("tasker.pending") ?? []), pending]);
+  setShared("taskr.pending", [...(shared("taskr.pending") ?? []), pending]);
 }
 
 // A board is a tab whose only pane is this mod: one for every project (`project`), and one
@@ -90,16 +90,16 @@ export function openInProject(project, argv) {
 export function openBoard(project = null) {
   const name = project ? S.boardOf(project.name) : S.board;
   const ps = panes();
-  const tab = spaces().flatMap((s) => s.tabs ?? []).find((t) => t.name === name && ps.some((p) => p.tab === t.id && p.mod === "tasker"));
-  const pane = tab && ps.find((p) => p.tab === tab.id && p.mod === "tasker");
+  const tab = spaces().flatMap((s) => s.tabs ?? []).find((t) => t.name === name && ps.some((p) => p.tab === t.id && p.mod === "taskr"));
+  const pane = tab && ps.find((p) => p.tab === tab.id && p.mod === "taskr");
   if (pane) run("pane.focus", { pane: pane.pane });
-  else run("tab.new", { name, mod: "tasker", props: { role: "board", ...(project ? { project: project.id } : {}) } });
+  else run("tab.new", { name, mod: "taskr", props: { role: "board", ...(project ? { project: project.id } : {}) } });
 }
 
 // Labels a tab's terminals as the project's (shown at the project's level).
 export async function labelProject(projectId, tabId, ts) {
   for (const term of ts.filter((x) => x.labels?.["herdr.tab"] === tabId && !x.address.includes("/"))) {
-    try { await hc(["label", term.address, `tasker.project=${projectId}`]); } catch {}
+    try { await hc(["label", term.address, `taskr.project=${projectId}`]); } catch {}
   }
 }
 
@@ -117,7 +117,7 @@ export function openHere(repoKey, argv) {
 // same title gets its own: task/<slug>-<id end>.
 async function ensureWorktree(task, others = []) {
   const h = home();
-  const repo = untilde(task.repo, h);
+  const repo = untilde(task.folder, h);
   if (task.worktree) return { path: untilde(task.worktree, h), branch: task.branch };
   let name = slug(task.title);
   if (others.some((o) => o.id !== task.id && o.branch === `task/${name}`)) name = `${name}-${task.id.slice(-4)}`;
@@ -136,15 +136,15 @@ export async function launch(store, task, { worktree = false, resume = null } = 
   const project = task.project ? store.data.projects.find((p) => p.id === task.project) : null;
   // A task of the whole project (no repository of its own) works across all of them,
   // resumed too: the other repositories are added again.
-  const wide = !task.repo ? projectPlace(project, h) : null;
+  const wide = !task.folder ? projectPlace(project, h) : null;
   let argv = resume ? await resumeArgv(resume) : await agentArgv(store.data.settings.agent);
   // A resumed agent already has its conversation: no first message.
   const prompt = resume ? null : S.prompt(task, project);
   const beforeSpaces = new Set(spaces().map((s) => s.id));
   const beforeTabs = new Set(spaces().flatMap((s) => (s.tabs ?? []).map((t) => t.id)));
-  let folder = resume?.cwd ? untilde(resume.cwd, h) : task.worktree ? untilde(task.worktree, h) : task.repo ? untilde(task.repo, h) : wide?.folder ?? null;
+  let folder = resume?.cwd ? untilde(resume.cwd, h) : task.worktree ? untilde(task.worktree, h) : task.folder ? untilde(task.folder, h) : wide?.folder ?? null;
   const patch = {};
-  if (worktree && task.repo) {
+  if (worktree && task.folder) {
     const wt = await ensureWorktree(task, store.data.tasks);
     folder = wt.path;
     patch.worktree = tilde(wt.path, h);
@@ -153,7 +153,7 @@ export async function launch(store, task, { worktree = false, resume = null } = 
   // Repositories outside the folder it runs in are added (resumed in one of them: the rest).
   if (wide) argv = withDirs(argv, wide.all.filter((d) => !(d === folder || d.startsWith(folder + "/"))));
   if (!folder) {
-    // No repo: where the person is now.
+    // No folder: where the person is now.
     const f = focused();
     const s = spaces().find((x) => x.id === f?.space);
     folder = f?.cwd ?? (s ? place(s, panes()) : h);
@@ -191,26 +191,60 @@ export async function link(store, taskId, tabId, ts) {
     t.updated = Date.now();
   });
   for (const term of ts.filter((x) => x.labels?.["herdr.tab"] === tabId && !x.address.includes("/"))) {
-    try { await hc(["label", term.address, `tasker.task=${taskId}`]); } catch {}
+    try { await hc(["label", term.address, `taskr.task=${taskId}`]); } catch {}
   }
 }
 
-// Makes a task of a tab that belongs to none (`u` from the world's untracked list),
-// tied to it. Status: as given, else from what its agent is doing.
-// `auto`: made by tasker itself (a light task, see sidebar.js's tracking). A tab opened for a
-// whole project goes to that project, with no repository.
-export async function adopt(store, u, { status, title, auto = false } = {}) {
-  const st = status ?? (u.top === "working" || u.top === "blocked" ? "doing" : u.top === "done" ? "review" : "next");
+// Makes a task of an agent's tab that belongs to none (`u` from the world's untracked list),
+// tied to it: one with no plan (`auto`), named after its agent, as it is now (Doing while it
+// works or asks, To review once it finished, Idle while it waits for a word from you).
+// A tab opened for a whole project goes to that project, with no folder.
+export async function adopt(store, u) {
+  const st = u.top === "working" || u.top === "blocked" ? "doing" : u.top === "done" ? "review" : "next";
   let id = null;
-  const where = u.project ? { project: u.project, repo: null } : { repo: u.where.key };
+  const where = u.project ? { project: u.project, folder: null } : { folder: u.where.key };
   await store.update((d) => {
-    // One task per tab (two looks at once, two lists). A tab whose task was deleted isn't
-    // taken again by itself: only by the person (Make task).
-    if (d.tasks.some((t) => (t.tabs ?? []).includes(u.tab) && (!t.deleted || auto))) return false;
-    id = newTask(d, { title: title ?? untrackedName(u), ...where, status: st, tabs: [u.tab], ...(auto ? { auto: true } : {}) }).id;
+    // One task per tab (two looks at once, two lists).
+    if (d.tasks.some((t) => (t.tabs ?? []).includes(u.tab))) return false;
+    id = newTask(d, { title: untrackedName(u), ...where, status: st, tabs: [u.tab], auto: true, ...(st === "next" ? { idle: true } : {}) }).id;
   });
   if (id) await link(store, id, u.tab, terminals());
   return id;
+}
+
+// Moves a task's tabs (its agent) into another task, and the first one goes: an agent started on
+// its own, put in the task it was working for. Its conversations and agent time go along.
+export async function merge(store, fromId, toId, ts) {
+  const from = store.task(fromId);
+  if (!from || fromId === toId) return false;
+  const ok = await store.update((d) => {
+    const a = d.tasks.find((t) => t.id === fromId), b = d.tasks.find((t) => t.id === toId);
+    if (!a || !b) return false;
+    b.tabs = [...new Set([...(b.tabs ?? []), ...(a.tabs ?? [])])];
+    b.sessions = [...(b.sessions ?? []), ...(a.sessions ?? []).filter((s) => !(b.sessions ?? []).some((x) => x.id === s.id))].slice(-5);
+    b.agent_ms = (b.agent_ms ?? 0) + (a.agent_ms ?? 0);
+    b.updated = Date.now();
+    d.tasks = d.tasks.filter((t) => t.id !== fromId);
+  });
+  if (!ok) return false;
+  for (const tab of from.tabs ?? []) {
+    for (const term of ts.filter((x) => x.labels?.["herdr.tab"] === tab && !x.address.includes("/"))) {
+      try { await hc(["label", term.address, `taskr.task=${toId}`]); } catch {}
+    }
+  }
+  return true;
+}
+
+// Deletes a task, and closes its tabs: an agent is always some task's, so it goes with it.
+export async function remove(store, task) {
+  const ok = await store.update((d) => {
+    if (!d.tasks.some((t) => t.id === task.id)) return false;
+    d.tasks = d.tasks.filter((t) => t.id !== task.id);
+  });
+  // Its tabs as stored, and any whose terminals still carry its label (a tab the store lost).
+  const labelled = terminals().filter((x) => label(x, "task") === task.id).map((x) => x.labels["herdr.tab"]);
+  if (ok) for (const tab of new Set([...(task.tabs ?? []), ...labelled].filter(Boolean))) run("tab.close", { id: tab, confirmed: true });
+  return ok;
 }
 
 export async function send(address, text) {
@@ -252,7 +286,7 @@ export async function archive(store, task, { removeWorktree = false } = {}) {
   let warning = null;
   if (removeWorktree && task.worktree) {
     const h = home();
-    const repo = untilde(task.repo, h);
+    const repo = untilde(task.folder, h);
     const r = await git(repo, ["worktree", "remove", untilde(task.worktree, h)]);
     if (!r.ok) warning = r.err;
     else if (task.branch) {
@@ -294,9 +328,9 @@ export async function reposIn(folder) {
 export function removeRepo(data, repo, h) {
   const same = (r) => tilde(untilde(r, h), h) === repo;
   for (const p of data.projects) {
-    if (!(p.repos ?? []).some(same)) continue;
-    p.repos = p.repos.filter((r) => !same(r));
-    for (const t of data.tasks) if (!t.project && t.repo && same(t.repo)) t.project = p.id;
+    if (!(p.folders ?? []).some(same)) continue;
+    p.folders = p.folders.filter((r) => !same(r));
+    for (const t of data.tasks) if (!t.project && t.folder && same(t.folder)) t.project = p.id;
   }
 }
 
@@ -304,9 +338,9 @@ export function removeRepo(data, repo, h) {
 // Its tasks go with it: those of the project it left, and those in no project.
 export function moveRepo(data, repo, projectId, h) {
   const same = (r) => tilde(untilde(r, h), h) === repo;
-  const was = data.projects.find((p) => (p.repos ?? []).some(same))?.id ?? null;
-  for (const p of data.projects) p.repos = (p.repos ?? []).filter((r) => !same(r));
+  const was = data.projects.find((p) => (p.folders ?? []).some(same))?.id ?? null;
+  for (const p of data.projects) p.folders = (p.folders ?? []).filter((r) => !same(r));
   const p = projectId && data.projects.find((x) => x.id === projectId);
-  if (p) p.repos.push(repo);
-  for (const t of data.tasks) if (t.repo && same(t.repo) && (!t.project || t.project === was)) t.project = p ? p.id : null;
+  if (p) p.folders.push(repo);
+  for (const t of data.tasks) if (t.folder && same(t.folder) && (!t.project || t.project === was)) t.project = p ? p.id : null;
 }

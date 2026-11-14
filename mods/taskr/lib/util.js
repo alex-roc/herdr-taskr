@@ -1,6 +1,9 @@
 // Small pure helpers.
 
 export const STATUSES = ["inbox", "next", "doing", "waiting", "review", "done", "dropped"];
+// A terminal's label set by taskr (task, project), or by tasker, its name before 1.6.
+export const label = (term, key) => term?.labels?.[`taskr.${key}`] ?? term?.labels?.[`tasker.${key}`];
+
 export const OPEN = new Set(["inbox", "next", "doing", "waiting", "review"]);
 // Agent urgency, as Herdr's agents list ranks it.
 export const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };

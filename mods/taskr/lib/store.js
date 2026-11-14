@@ -8,10 +8,17 @@ import * as fs from "fs/promises";
 import { uid, STATUSES, parseDue, daysUntil, byRank, reorder } from "./util.js";
 import { S } from "../strings.js";
 
-export const DIR = () => `${appHome()}/data/tasker`;
+export const DIR = () => `${appHome()}/data/taskr`;
+// Where taskr kept its files when it was called tasker (before 1.6).
+const OLD_DIR = () => `${appHome()}/data/tasker`;
 export const FILE = () => `${DIR()}/tasks.json`;
 
-export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, track: true, activity: false };
+// `review_after`: minutes a task an agent started on its own (no plan) stays in To review once
+// its agent stops; 0 keeps it there until you look at it or close it.
+export const REVIEW_AFTER = [15, 60, 240, 1440, 0];
+// `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.
+export const PAUSE_AFTER = [0, 1, 3, 7, 14, 30];
+export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, review_after: 60, pause_after: 3, activity: false };
 const EMPTY = () => ({ version: 1, settings: { ...DEFAULTS }, projects: [], tasks: [] });
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -27,13 +34,14 @@ export function cleanTask(t) {
   const p = PRIORITY[str(t.priority).toLowerCase()] ?? num(t.priority, 2);
   // Only absolute dates: a word like "tomorrow" in the file would move every day.
   const due = /^\d{4}-\d{1,2}-\d{1,2}$/.test(str(t.due).trim()) ? parseDue(t.due) : null;
-  const { auto: _auto, ...rest } = t;
+  const { auto: _auto, idle: _idle, repo: _repo, ...rest } = t;
   return {
     ...rest,
     id: str(t.id) || uid(),
     title: str(t.title).trim() || "Untitled",
     project: strOrNull(t.project),
-    repo: strOrNull(t.repo),
+    // Where it is: a folder (a git repository or not). `repo` is its name in files from before.
+    folder: strOrNull(t.folder ?? t.repo),
     status,
     // Its place in every list, set by dragging (lower first). A task without one (written by
     // hand or by an agent, or from before) gets one on reading; `priority` only says where.
@@ -44,9 +52,11 @@ export function cleanTask(t) {
     next_step: str(t.next_step),
     notes: str(t.notes),
     issue: t.issue && typeof t.issue === "object" && t.issue.number != null ? { ...t.issue, url: str(t.issue.url) } : null,
-    // Made by tasker for an agent's tab (a light task): renamed after its agent, gone with its
+    // Made by taskr for an agent's tab (a light task): renamed after its agent, gone with its
     // tab, until the person changes anything on it.
     ...(t.auto === true ? { auto: true } : {}),
+    // A task with no plan whose agent you've seen and that waits for a word from you: Idle in Now.
+    ...(t.auto === true && t.idle === true ? { idle: true } : {}),
     // Later: until a day, or "someday"; and the last day a due reminder went out.
     snooze: t.snooze === "someday" || /^\d{4}-\d{2}-\d{2}$/.test(str(t.snooze)) ? t.snooze : null,
     reminded: /^\d{4}-\d{2}-\d{2}$/.test(str(t.reminded)) ? t.reminded : null,
@@ -67,7 +77,14 @@ export function cleanTask(t) {
 export function cleanProject(p) {
   // `paused`: put aside for now; its tasks leave Now (unless an agent needs you or works) and it
   // waits folded at the end of Projects. A `color` from before stays in the file, unused.
-  return { ...p, id: str(p.id) || uid(), name: str(p.name).trim() || "Untitled", repos: list(p.repos).filter((r) => typeof r === "string"), paused: p.paused === true };
+  // Its folders (git repositories or not); `repos` in files from before. `paused_auto`: when taskr
+  // paused it for having nothing going on (it comes back by itself); `active_at`: since when it's
+  // active (made, or made active again).
+  const { repos: _repos, paused_auto: _pa, active_at: _aa, ...rest } = p;
+  const paused = p.paused === true;
+  return { ...rest, id: str(p.id) || uid(), name: str(p.name).trim() || "Untitled", folders: list(p.folders ?? p.repos).filter((r) => typeof r === "string"), paused,
+    ...(paused && Number.isFinite(Number(p.paused_auto)) && p.paused_auto ? { paused_auto: Number(p.paused_auto) } : {}),
+    ...(Number.isFinite(Number(p.active_at)) && p.active_at ? { active_at: Number(p.active_at) } : {}) };
 }
 
 // Every task gets a place: one without (hand-written, an agent's, a file from before ranks)
@@ -113,7 +130,10 @@ export function parse(text) {
   settings.usage = settings.usage === true; // off unless turned on: it starts a `claude` now and then
   settings.reminders = settings.reminders !== false;
   settings.revive = settings.revive !== false;
-  settings.track = settings.track !== false;
+  // Every agent's tab is a task now: the old switch is gone.
+  delete settings.track;
+  settings.review_after = REVIEW_AFTER.includes(num(settings.review_after, -1)) ? num(settings.review_after) : DEFAULTS.review_after;
+  settings.pause_after = PAUSE_AFTER.includes(num(settings.pause_after, -1)) ? num(settings.pause_after) : DEFAULTS.pause_after;
   settings.activity = settings.activity === true; // the detail's list of status changes: off unless turned on
   const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
   return {
@@ -121,8 +141,21 @@ export function parse(text) {
     version: d.version ?? 1,
     settings,
     projects: list(d.projects).filter(obj).map(cleanProject),
-    tasks: rankTasks(unique(list(d.tasks).filter(obj).map(cleanTask))),
+    // A deleted task is gone (older files kept it marked `deleted`).
+    tasks: rankTasks(unique(list(d.tasks).filter((t) => obj(t) && t.deleted !== true).map(cleanTask))),
   };
+}
+
+// Brings tasker's files over the first time (tasks, conversations to resume, the Linear key);
+// the old folder stays as it was.
+export async function moveIn() {
+  for (const name of ["tasks.json", "terminals.json", "linear-key"]) {
+    const read = async (path) => { try { return await readTextFile(path); } catch { return null; } };
+    if (await read(`${DIR()}/${name}`)) continue;
+    const old = await read(`${OLD_DIR()}/${name}`);
+    // Written only where there's nothing yet (compare-and-swap against no file).
+    if (old) { try { await writeTextFile(`${DIR()}/${name}`, old, null); } catch {} }
+  }
 }
 
 export class Store {
@@ -160,6 +193,7 @@ export class Store {
     cx.spawn(async (cx) => {
       this.changed = () => cx.notify();
       try { await fs.mkdir(DIR(), { recursive: true }); } catch {}
+      await moveIn();
       await this.load();
       cx.notify();
       for (;;) {
@@ -232,7 +266,7 @@ export function newTask(data, fields) {
     id: uid(),
     title: "",
     project: null,
-    repo: null,
+    folder: null,
     status: "inbox",
     rank: Math.max(0, ...data.tasks.map((x) => (Number.isFinite(x.rank) ? x.rank : 0))) + 1, // last
     due: null,
@@ -263,6 +297,7 @@ export function kept(t) {
 export function setStatus(t, status, now = Date.now()) {
   if (!t || t.status === status) return false;
   t.status = status;
+  delete t.idle;
   t.updated = now;
   t.done_at = status === "done" ? now : status === "dropped" ? t.done_at : null;
   // Started, finished or dropped: no longer put off.
@@ -298,8 +333,17 @@ export function toTop(data, id) {
   return true;
 }
 
+// Paused or active by the person: a pause of theirs stays until they lift it, and an active
+// project counts its quiet days from now.
+export function setPaused(p, paused, now = Date.now()) {
+  if (!p) return false;
+  p.paused = paused;
+  delete p.paused_auto;
+  if (!paused) p.active_at = now;
+}
+
 export function newProject(data, fields) {
-  const p = { id: uid(), name: "", repos: [], paused: false, ...fields };
+  const p = { id: uid(), name: "", folders: [], paused: false, active_at: Date.now(), ...fields };
   data.projects.push(p);
   return p;
 }

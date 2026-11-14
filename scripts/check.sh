@@ -1,13 +1,13 @@
 #!/bin/sh
 # Runs Herdr's own `herdr-app check` on the mod once per role and dialog.
-# `check` renders a mod with no props; tasker draws something different for each
+# `check` renders a mod with no props; taskr draws something different for each
 # { role } and { dialog }, so each gets a copy whose props() returns that one.
 # Usage: scripts/check.sh   (needs herdr-app on PATH)
 set -eu
 
-SRC=$(cd "$(dirname "$0")/.." && pwd)/mods/tasker
+SRC=$(cd "$(dirname "$0")/.." && pwd)/mods/taskr
 command -v herdr-app >/dev/null 2>&1 || { echo "herdr-app not found: install Herdr first." >&2; exit 1; }
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/tasker-check.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/taskr-check.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 fail=0

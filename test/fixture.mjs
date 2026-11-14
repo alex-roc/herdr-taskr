@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import { H, reset } from "herdr";
 
 // The real layout, with the detail column shown.
-const LAYOUT = JSON.parse(readFileSync(new URL("../layouts/tasker.json", import.meta.url), "utf8"));
-const unhide = (n) => { if (n.id === "tasker-detail") delete n.hidden; (n.children ?? []).forEach(unhide); return n; };
+const LAYOUT = JSON.parse(readFileSync(new URL("../layouts/taskr.json", import.meta.url), "utf8"));
+const unhide = (n) => { if (n.id === "taskr-detail") delete n.hidden; (n.children ?? []).forEach(unhide); return n; };
 
 export const DAY = 86400000;
 export const iso = (days) => { const d = new Date(Date.now() + days * DAY); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -66,11 +66,11 @@ const term = (address, space, tab, status, extra = {}) => ({ address, state: "li
 const tab = (id, index, extra = {}) => ({ id, index, name: String(index), named: false, active: index === 1, status: null, panes: 1, zoomed: false,
   settled: false, settled_at: null, changed_at: null, working_since: null, ...extra });
 
-export const CLAUDE_USAGE = JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: "tasker-usage", response: {
+export const CLAUDE_USAGE = JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: "taskr-usage", response: {
   subscription_type: "team", rate_limits_available: true,
   rate_limits: { five_hour: { utilization: 28, resets_at: new Date(Date.now() + 3600000).toISOString() }, seven_day: { utilization: 74, resets_at: new Date(Date.now() + 3 * 86400000).toISOString() } } } } });
 
-export const FILE = () => `${H.appHome}/data/tasker/tasks.json`;
+export const FILE = () => `${H.appHome}/data/taskr/tasks.json`;
 
 export function world({ tasks: extraTasks = [], projects: extraProjects, settings } = {}) {
   reset();
@@ -88,7 +88,7 @@ export function world({ tasks: extraTasks = [], projects: extraProjects, setting
     pane("p2", "tb2", "t2", "/home/me/dev/app/src", { status: "blocked", program: agentProgram }),
     pane("p3", "tb3", "t3", "/home/me/dev/app"),
     pane("p4", "tb4", "t4", "/home/me/dev/app", { status: "done", program: agentProgram }),
-    pane("pB", "tbB", null, null, { mod: "tasker" }),
+    pane("pB", "tbB", null, null, { mod: "taskr" }),
     pane("p5", "tb5", "t1q", "/home/me/dev/web"),
     pane("p6", "tb6", "t6", "/home/me"),
     pane("vps/p7", "vps/tb7", "vps/t7", "/srv/api", { status: "working", program: agentProgram }),
@@ -135,7 +135,7 @@ export function world({ tasks: extraTasks = [], projects: extraProjects, setting
     task({ id: "remote1", title: "Remote work", repo: "/srv/api", status: "doing", tabs: ["vps/tb7"] }),
     ...extraTasks,
   ];
-  H.files.set(FILE(), JSON.stringify({ version: 1, settings: { wip: 2, stale_days: 3, agent: "claude", track: false, ...settings }, projects, tasks }, null, 1));
+  H.files.set(FILE(), JSON.stringify({ version: 1, settings: { wip: 2, stale_days: 3, agent: "claude", ...settings }, projects, tasks }, null, 1));
   H.exec = fakeExec;
   H.hc = (args) => (args[0] === "read" ? { code: 0, stdout: "[hc] note\n$ npm test\n\n✓ 12 passed\n> ", stderr: "" } : { code: 0, stdout: "", stderr: "" });
   return H;

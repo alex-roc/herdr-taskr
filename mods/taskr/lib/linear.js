@@ -1,13 +1,13 @@
 // Linear: the open issues assigned to you, to import as tasks. Uses your personal
-// API key, from $LINEAR_API_KEY or the file data/tasker/linear-key (never tasks.json).
+// API key, from $LINEAR_API_KEY or the file data/taskr/linear-key (never tasks.json).
 // Reads only; nothing is changed in Linear.
 
 import { exec, readTextFile, appHome } from "herdr";
 
 const API = "https://api.linear.app/graphql";
-export const KEY_FILE = () => `${appHome()}/data/tasker/linear-key`;
+export const KEY_FILE = () => `${appHome()}/data/taskr/linear-key`;
 
-const QUERY = `query TaskerAssigned {
+const QUERY = `query TaskrAssigned {
   viewer { assignedIssues(first: 50, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
     nodes { identifier title url description priority dueDate state { name } team { key } labels { nodes { name } } }
   } }

@@ -1,4 +1,4 @@
-// Shared pieces of tasker's UI, drawn with the person's theme colors.
+// Shared pieces of taskr's UI, drawn with the person's theme colors.
 
 import { div, svg, image } from "gpui-kit";
 import { layout } from "herdr";
@@ -9,8 +9,8 @@ import { dueLabel, daysUntil, duration } from "./util.js";
 export const SPINNER = "mods/workspace-chrome/spinner.svg";
 export const CHEVRON = (open) => `mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`;
 
-// Icons are Lucide (ISC), shipped in mods/tasker/icons: tinted with the text color.
-export const ICON = (name) => `mods/tasker/icons/${name}.svg`;
+// Icons are Lucide (ISC), shipped in mods/taskr/icons: tinted with the text color.
+export const ICON = (name) => `mods/taskr/icons/${name}.svg`;
 export function icon(name, size = 14, color) {
   const el = svg(ICON(name)).size(size).flex_none();
   return color ? el.text_color(color) : el;
@@ -77,7 +77,7 @@ export function button(t, id, label, onClick, { primary = false, small = false, 
     .child(label);
 }
 
-// `name`: a Lucide icon in mods/tasker/icons.
+// `name`: a Lucide icon in mods/taskr/icons.
 export function iconButton(t, id, name, tooltip, onClick) {
   return div().id(id).flex_none().px(4).h(22).rounded(5).flex().items_center()
     .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
@@ -114,14 +114,14 @@ export function shownChildren(n) {
   return [kids.find((c) => c.id === n.active) ?? kids[0]].filter(Boolean);
 }
 
-// The views of the tasker lists on screen, in layout order: [null] for the one with
+// The views of the taskr lists on screen, in layout order: [null] for the one with
 // Now/Projects tabs, ["now", "projects"] for the two side by side.
 export function shownLists() {
   const out = [];
   const walk = (n) => {
     if (!n || n.hidden) return;
     const c = n.content;
-    if (c?.mod === "tasker" && (c.props?.role ?? "sidebar") === "sidebar" && !c.props?.dialog) out.push(c.props?.view ?? null);
+    if (c?.mod === "taskr" && (c.props?.role ?? "sidebar") === "sidebar" && !c.props?.dialog) out.push(c.props?.view ?? null);
     shownChildren(n).forEach(walk);
   };
   walk(layout());

@@ -16,7 +16,7 @@ export function reset(over = {}) {
   for (const k of Object.keys(H)) delete H[k];
   Object.assign(H, {
     home: "/home/me",
-    appHome: mkdtempSync(join(tmpdir(), "tasker-test-")),
+    appHome: mkdtempSync(join(tmpdir(), "taskr-test-")),
     spaces: [], panes: [], agents: [], terminals: [],
     shared: {}, props: null, focused: null, window: { active: true, platform: "macos" },
     files: new Map(), watchers: [], commandQueue: [], commandWaiters: [],
@@ -34,7 +34,7 @@ export function reset(over = {}) {
     ...over,
   });
   globalThis.__storage?.clear();
-  delete globalThis.__tasker;
+  delete globalThis.__taskr;
   return H;
 }
 reset();

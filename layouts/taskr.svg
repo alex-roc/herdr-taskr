@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
-  <!-- tasker: task list on the left, the agent's terminal, the task's detail on the right, a status bar. -->
+  <!-- taskr: task list on the left, the agent's terminal, the task's detail on the right, a status bar. -->
   <rect width="320" height="200" fill="#14171a"/>
   <!-- sidebar -->
   <rect width="78" height="200" fill="#1d2025"/>

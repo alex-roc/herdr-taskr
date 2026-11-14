@@ -3,7 +3,7 @@
 
 import { place } from "./git.js";
 import { report, word } from "./agentinfo.js";
-import { tilde, untilde, base, OPEN, RANK, byRank, isLater, projectFolder } from "./util.js";
+import { tilde, untilde, base, OPEN, RANK, byRank, isLater, projectFolder, label } from "./util.js";
 import { S } from "../strings.js";
 
 // The state an agent shows in its terminal's title when it reports none to Herdr: Claude
@@ -83,7 +83,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
   const tasks = data.tasks.filter((t) => !t.deleted).map((t) => ({ t, tabs: [...(t.tabs ?? [])] }));
   const taskById = new Map(tasks.map((x) => [x.t.id, x]));
   for (const term of ts) {
-    const id = term.labels?.["tasker.task"], tab = term.labels?.["herdr.tab"];
+    const id = label(term, "task"), tab = term.labels?.["herdr.tab"];
     const x = id && taskById.get(id);
     if (x && tab && !x.tabs.includes(tab)) x.tabs.push(tab);
   }
@@ -91,16 +91,16 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
   for (const x of tasks) for (const tab of x.tabs) taskOfTab.set(tab, x);
 
   const projectOfRepo = new Map();
-  for (const p of data.projects) for (const r of p.repos ?? []) projectOfRepo.set(tilde(untilde(r, h), h), p.id);
-  // A tab opened for a whole project: its terminals carry tasker.project=<id>; else its
+  for (const p of data.projects) for (const r of p.folders ?? []) projectOfRepo.set(tilde(untilde(r, h), h), p.id);
+  // A tab opened for a whole project: its terminals carry taskr.project=<id>; else its
   // space is the project's own (named after it, in the folder above its repositories).
   const labelled = new Map();
   for (const term of ts) {
-    const id = term.labels?.["tasker.project"], tab = term.labels?.["herdr.tab"];
+    const id = label(term, "project"), tab = term.labels?.["herdr.tab"];
     if (id && tab) labelled.set(tab, id);
   }
   const roots = data.projects.map((p) => {
-    const repos = (p.repos ?? []).map((r) => untilde(r, h));
+    const repos = (p.folders ?? []).map((r) => untilde(r, h));
     const dir = projectFolder(repos, h);
     return { id: p.id, name: p.name, key: dir ? tilde(dir, h) : null };
   });
@@ -118,7 +118,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
     x.agents = x.tabs.flatMap((tab) => byTab.get(tab) ?? []);
     x.live = x.tabs.filter((tab) => spaceOfTab.has(tab));
     x.top = x.agents.reduce((m, e) => ((RANK[e.top] ?? 0) > (RANK[m] ?? 0) ? e.top : m), null);
-    x.project = x.t.project ?? (x.t.repo ? projectOfRepo.get(x.t.repo) ?? null : null);
+    x.project = x.t.project ?? (x.t.folder ? projectOfRepo.get(x.t.folder) ?? null : null);
     x.open = OPEN.has(x.t.status);
     // The folder its work is in now (its agent's, else a terminal's in its open tabs) and the
     // repository there: a task may name none (a project's own space) and still be in one.
@@ -128,7 +128,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
     x.repoHere = x.folder ? repos.get(x.folder, x.folderOn)?.main ?? null : null;
   }
 
-  // Tabs that belong to no task: agents tasker doesn't track yet, and plain terminals.
+  // Tabs that belong to no task: plain terminals, and an agent's for the moment before its task is made.
   const untracked = [];
   for (const [tab, where] of spaceOfTab) {
     if (taskOfTab.has(tab)) continue;
@@ -153,11 +153,13 @@ export function nowView(w, data) {
   const staleMs = (data.settings.stale_days ?? 3) * 86400000;
   const used = new Set();
   const take = (list) => { list.forEach((x) => used.add(x.t.id)); return list; };
+  // A task with no plan whose agent you've seen, waiting for a word from you: Idle, apart.
+  const idle = (x) => x.t.auto === true && x.t.idle === true;
   // A paused project's work is out of Now, but for an agent that needs you or works (taken first).
   const paused = pausedProjects(data);
   const active = (x) => !paused.has(x.project);
   // An agent asking or working shows even on a task put off; the rest of a Later task waits in Later.
-  const free = (x) => !used.has(x.t.id) && !isLater(x.t) && active(x);
+  const free = (x) => !used.has(x.t.id) && !isLater(x.t) && !idle(x) && active(x);
   const needs = take(open.filter((x) => x.top === "blocked"));
   // An agent that finished asks for a review only of work in progress: Next, Waiting or Inbox is your call.
   const review = take(open.filter((x) => free(x) && (x.t.status === "review" || (x.top === "done" && x.t.status === "doing"))));
@@ -166,12 +168,12 @@ export function nowView(w, data) {
   const next = open.filter((x) => free(x) && ["next", "doing", "waiting"].includes(x.t.status)).sort((a, b) => byRank(a.t, b.t));
   const inbox = open.filter((x) => free(x) && x.t.status === "inbox").sort((a, b) => byRank(a.t, b.t));
   // Soonest back first; someday last.
+  const idling = open.filter((x) => !used.has(x.t.id) && idle(x) && !isLater(x.t) && active(x)).sort((a, b) => (b.t.history?.at(-1)?.at ?? 0) - (a.t.history?.at(-1)?.at ?? 0));
   const later = open.filter((x) => !used.has(x.t.id) && isLater(x.t) && active(x))
     .sort((a, b) => (a.t.snooze === "someday") - (b.t.snooze === "someday") || String(a.t.snooze).localeCompare(String(b.t.snooze)) || byRank(a.t, b.t));
-  const loose = (s) => w.untracked.filter((u) => u.top === s && (s !== "done" || !paused.has(u.project)));
-  // Agents in no task that need nothing now: the "Not in a task" inbox.
-  const idle = w.untracked.filter((u) => u.agents.length && !["blocked", "done", "working"].includes(u.top) && !paused.has(u.project));
-  return { needs, review, working, stalled, next, inbox, later, untrackedNeeds: loose("blocked"), untrackedDone: loose("done"), untrackedWorking: loose("working"), untrackedIdle: idle };
+  // Every agent is in a task (the sidebar makes one as it starts): terminals in no task are
+  // shells, and those live in Projects, under their folder.
+  return { needs, review, working, stalled, next, inbox, idle: idling, later };
 }
 
 // The Projects outline: project → repo → tasks (+ untracked tabs).
@@ -187,7 +189,7 @@ export function projectTree(w, data, h, filters) {
     untracked: w.untracked.filter((u) => !u.project && u.where.key === key),
   });
   const projects = data.projects.map((p) => {
-    const repos = new Map((p.repos ?? []).map((r) => { const k = tilde(untilde(r, h), h); return [k, repoNode(k)]; }));
+    const repos = new Map((p.folders ?? []).map((r) => { const k = tilde(untilde(r, h), h); return [k, repoNode(k)]; }));
     return { p, repos, loose: [], untracked: w.untracked.filter((u) => u.project === p.id) };
   });
   const byId = new Map(projects.map((x) => [x.p.id, x]));
@@ -195,9 +197,9 @@ export function projectTree(w, data, h, filters) {
   for (const x of w.tasks) {
     if (!show(x)) continue;
     const home = (x.project && byId.get(x.project)) || orphan;
-    if (x.t.repo) {
-      if (!home.repos.has(x.t.repo)) home.repos.set(x.t.repo, repoNode(x.t.repo));
-      home.repos.get(x.t.repo).tasks.push(x);
+    if (x.t.folder) {
+      if (!home.repos.has(x.t.folder)) home.repos.set(x.t.folder, repoNode(x.t.folder));
+      home.repos.get(x.t.folder).tasks.push(x);
     } else home.loose.push(x);
   }
   // Open repos in no project, when something there belongs to no task: a space
@@ -256,7 +258,7 @@ export function whereLabel(data, { project = null, repo = null, folder = null } 
 
 // A task's: the repository it names, else the one its terminal is in, else that folder.
 export const taskWhere = (data, x, h, { project = true } = {}) =>
-  whereLabel(data, { project: project ? x.project : null, repo: x.t.repo ?? x.repoHere, folder: x.folder }, h);
+  whereLabel(data, { project: project ? x.project : null, repo: x.t.folder ?? x.repoHere, folder: x.folder }, h);
 
 // A terminal in no task: its project (its space's, or its repository's) and where it is.
 export function looseWhere(w, data, u, h, { project = true } = {}) {

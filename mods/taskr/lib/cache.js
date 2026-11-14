@@ -4,7 +4,7 @@
 // Plain data on globalThis, so it also survives a hot reload; work in flight that a
 // reload cancelled counts as done after a minute.
 export function sharedCache(name) {
-  const all = (globalThis.__tasker ??= {});
+  const all = (globalThis.__taskr ??= {});
   return (all[name] ??= { info: {}, seen: {}, busy: {} });
 }
 
