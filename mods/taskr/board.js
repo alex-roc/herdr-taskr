@@ -7,7 +7,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { theme, setShared, run, shared, props, home } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask } from "./lib/store.js";
-import { RANK, byRank, issueLabel, isLater, laterLabel } from "./lib/util.js";
+import { RANK, byRank, issueLabel, isLater, laterLabel, aside } from "./lib/util.js";
 import { statusIcon, taskMark, dueChip, chip, iconButton, icon, agentFor } from "./lib/ui.js";
 import { taskWhere, pausedProjects } from "./lib/world.js";
 import { openBoard } from "./lib/actions.js";
@@ -99,7 +99,7 @@ export const Board = {
     return v_flex().id(`card-${task.id}`).p(9).gap(6).flex_none().rounded(9).bg(t.background)
       .border_1().border_color(blocked ? t.blocked : selected ? t.accent : t.border)
       .when(lifted, (el) => el.opacity(0.45))
-      .when(!lifted && isLater(task), (el) => el.opacity(0.6))
+      .when(!lifted && aside(task, x.top) && task.status !== "done", (el) => el.opacity(0.6))
       .when(target && !below, (el) => el.border_t(3).border_color(t.accent))
       .when(target && below, (el) => el.border_b(3).border_color(t.accent))
       .cursor_pointer().hover((s) => s.border_color(t.input))
@@ -117,7 +117,7 @@ export const Board = {
       })
       .child(h_flex().gap(7).items_start()
         .child(div().pt(1).child(taskMark(t, task, e?.top)))
-        .child(div().flex_1().min_w(0).text_size(12.8).text_color(task.status === "done" ? t.dim : t.foreground).child(task.title)))
+        .child(div().flex_1().min_w(0).text_size(12.8).text_color(aside(task, x.top) ? t.dim : t.foreground).child(task.title)))
       .when(Boolean(task.next_step) && task.status !== "done", (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(`→ ${task.next_step}`)))
       .when(blocked && Boolean(e?.report?.msg), (el) => el.child(div().text_size(11).text_color(t.blocked).child(e.report.msg.replace(/^answer:\s*/i, ""))))
       .when(!blocked && Boolean(meta), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(meta)))

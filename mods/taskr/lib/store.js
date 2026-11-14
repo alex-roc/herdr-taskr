@@ -14,11 +14,11 @@ const OLD_DIR = () => `${appHome()}/data/tasker`;
 export const FILE = () => `${DIR()}/tasks.json`;
 
 // `review_after`: minutes a task an agent started on its own (no plan) stays in To review once
-// its agent stops; 0 keeps it there until you look at it or close it.
+// its agent stops; 0 keeps it there.
 export const REVIEW_AFTER = [15, 60, 240, 1440, 0];
 // `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.
 export const PAUSE_AFTER = [0, 1, 3, 7, 14, 30];
-export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, review_after: 60, pause_after: 3, activity: false };
+export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, review_after: 60, pause_after: 1, activity: false };
 const EMPTY = () => ({ version: 1, settings: { ...DEFAULTS }, projects: [], tasks: [] });
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));

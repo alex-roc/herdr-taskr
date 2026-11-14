@@ -4,12 +4,12 @@
 
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window, focused } from "herdr";
+import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere } from "./lib/world.js";
 import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, moveRepo } from "./lib/actions.js";
-import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel } from "./lib/util.js";
+import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside } from "./lib/util.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
 import { Revive } from "./lib/revive.js";
@@ -254,8 +254,8 @@ export const Sidebar = {
 
   // Every agent's tab is a task: one with no plan (`auto`) from its start, named after its
   // agent, until the person changes anything on it. Planned or not, a task moves with its agent
-  // (keepBooks); one with no plan is also looked after for you: once you look at its terminal, or
-  // after `review_after` minutes, it leaves To review for Idle while its agent stays open, back in
+  // (keepBooks); one with no plan is also looked after for you: after `review_after` minutes in To
+  // review (looking at it doesn't count: you may be working with it), it goes to Idle while its agent stays open, back in
   // Doing when it works again; Done once its agent quits or its tab closes (resumable from there). After a restart the agent comes back by itself (lib/revive.js)
   // before that, and the task goes on.
   follow(cx, w, ops, now) {
@@ -268,7 +268,6 @@ export const Sidebar = {
     const gone = (this.books.gone ??= {});
     const anySpace = w.spaces.length > 0;
     const wait = (this.store.data.settings.review_after ?? 60) * 60000;
-    const looking = window()?.active ? focused()?.pane ?? null : null;
     const close = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status)) setStatus(y, "done", now); });
     const rest = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status) && !y.idle) y.idle = true; });
     for (const x of w.tasks) {
@@ -284,11 +283,10 @@ export const Sidebar = {
         continue;
       }
       delete gone[x.t.id];
-      // Its agent stopped: seen (its terminal in front), or waiting longer than asked.
+      // Its agent stopped, and it's waited longer than asked.
       if (["working", "blocked"].includes(x.top) || x.t.idle || isLater(x.t)) continue;
       const since = (x.t.history ?? []).at(-1)?.at ?? x.t.updated ?? now;
-      const seen = Boolean(looking) && x.agents.some((e) => e.a.pane === looking);
-      if (seen || (wait > 0 && now - since > wait)) rest(x.t.id);
+      if (wait > 0 && now - since > wait) rest(x.t.id);
     }
   },
 
@@ -440,7 +438,7 @@ export const Sidebar = {
       .on_hover((on, cx) => { this.hovered = on ? task.id : this.hovered === task.id ? null : this.hovered; cx.notify(); })
       .child(h_flex().h(20).gap(7).items_center()
         .child(taskMark(t, task, e?.top))
-        .child(div().flex_1().min_w(0).truncate().text_color(done || later ? t.dim : t.foreground).when(e?.top === "done", (el) => el.font_semibold()).child(task.title))
+        .child(div().flex_1().min_w(0).truncate().text_color(aside(task, x.top) ? t.dim : t.foreground).when(e?.top === "done", (el) => el.font_semibold()).child(task.title))
         .when(this.hovered === task.id && !e && !done, (el) => el.child(iconButton(t, `go-${task.id}`, "play", S.startHint, (_e, cx) => this.launch(cx, task, false))))
         .when(Boolean(due), (el) => el.child(due)))
       .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : t.dim).child(second)));

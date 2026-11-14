@@ -8,7 +8,7 @@
 # and plugins out.
 #
 # Exit 0: printed the reply. 127: no claude CLI. 1: no reply within 15 s.
-CLAUDE=$(command -v "${TASKER_CLAUDE_BIN:-claude}" 2>/dev/null) || exit 127
+CLAUDE=$(command -v "${TASKR_CLAUDE_BIN:-claude}" 2>/dev/null) || exit 127
 
 dir=$(mktemp -d "${TMPDIR:-/tmp}/taskr-usage.XXXXXX") || exit 1
 trap 'rm -rf "$dir"' EXIT

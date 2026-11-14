@@ -56,7 +56,7 @@ jq --arg id "agent-$now" --argjson now "$now" \
 ## Settings and old keys
 
 `settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `review_after` (minutes
-a task with no plan stays in To review: 15, 60, 240, 1440, or 0 for until the person has seen it) and
+a task with no plan stays in To review: 15, 60, 240, 1440, or 0 for always) and
 `pause_after` (days with nothing happening before a project pauses by itself: 1, 3, 7, 14, 30, or 0 for
 never). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave
 `paused_auto` and `active_at` to taskr.
@@ -67,8 +67,8 @@ still read and rewritten.
 
 `"auto": true` marks a task taskr made by itself for an agent that started in a tab with no task,
 titled after the agent. It has no plan yet: taskr moves it as its agent works (Doing, To review), marks it
-Idle (`"idle": true`) once the person has seen it or after `review_after`, and Done when its agent
-quits. Anything you change on it makes it the person's, and taskr removes `auto`. Don't set `auto`
+Idle (`"idle": true`) after `review_after`, and Done when its agent
+quits; its tab is then a plain terminal, and an agent started there again reopens the same task. Anything you change on it makes it the person's, and taskr removes `auto`. Don't set `auto`
 on a task you create.
 
 ## Showing a task

@@ -1,7 +1,7 @@
 // What taskr does in Herdr and git on a task's behalf.
 
 import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, terminals, shared, setShared } from "herdr";
-import { untrackedName } from "./world.js";
+import { untrackedName, released } from "./world.js";
 import { git, place } from "./git.js";
 import { setStatus, newTask } from "./store.js";
 import { untilde, tilde, slug, projectFolder, label } from "./util.js";
@@ -204,8 +204,16 @@ export async function adopt(store, u) {
   let id = null;
   const where = u.project ? { project: u.project, folder: null } : { folder: u.where.key };
   await store.update((d) => {
-    // One task per tab (two looks at once, two lists).
-    if (d.tasks.some((t) => (t.tabs ?? []).includes(u.tab))) return false;
+    // One task per tab (two looks at once, two lists). A task with no plan closed when its agent
+    // quit takes it back: an agent started again in its tab goes on with it.
+    const had = d.tasks.find((t) => (t.tabs ?? []).includes(u.tab));
+    if (had && !released(had)) return false;
+    if (had) {
+      setStatus(had, st);
+      if (st === "next") had.idle = true;
+      id = had.id;
+      return;
+    }
     id = newTask(d, { title: untrackedName(u), ...where, status: st, tabs: [u.tab], auto: true, ...(st === "next" ? { idle: true } : {}) }).id;
   });
   if (id) await link(store, id, u.tab, terminals());

@@ -47,7 +47,7 @@ What makes it different:
 | **Stalled** | Doing or Waiting tasks that haven't moved in a few days |
 | **Inbox** | Ideas and imported issues, not yet planned |
 | **Later** | Tasks you put off, folded: each comes back on its day (or *someday*: when you bring it back) |
-| **Idle** | Agents started on their own (tasks with no plan) you've seen, waiting for a word from you, folded |
+| **Idle** | Agents started on their own (tasks with no plan) that finished a while ago, waiting for a word from you, folded |
 
 Under each row, and on each board card: where it is and how long its agent has been as it is
 (`Acme › api · working 14m`). Where is the task's folder, else the one its terminal is in now,
@@ -72,12 +72,14 @@ same thing with its plan filled in (next step, notes, due date…): *Plan it…*
 form. Change anything on a no-plan task and it's yours from then on.
 
 A no-plan task is Doing while its agent works or asks, and in To review once it finishes. It leaves
-To review as soon as you look at its terminal, or after the time you set (*To review, for tasks with no
-plan* in the settings: 15 minutes, 1 hour, 4 hours, a day, or until you've seen it), and goes to
+To review after the time you set (*To review, for tasks with no plan* in the settings: 15 minutes,
+1 hour, 4 hours, a day, or always; looking at it doesn't count, you may be working with it), and goes to
 **Idle**, folded at the end of Now, while its agent stays open; it goes back to Doing when its agent
 works again. When its agent quits (30 seconds after) or its tab closes (a minute after), it goes to
-Done, and *Resume agent* picks it up. A planned task only goes
-Done by your hand. *Done today* in the status bar doesn't count no-plan tasks. So you can work only
+Done, and *Resume agent* picks it up; a tab left open is a plain terminal again (`zsh · folder`), and
+an agent started in it again takes the same task back up. A planned task only goes
+Done by your hand. Rows that are closed, put off (Later) or Idle are dimmed, unless their agent works
+or asks for you. *Done today* in the status bar doesn't count no-plan tasks. So you can work only
 with terminals and agents and still get the list, the board, Later, the reminders and the resume after
 a restart; and plan tasks with details (next step, notes, due date, issues, a worktree) when you want.
 
@@ -95,7 +97,7 @@ for the whole project, and `⋯` (or right-click), its menu: board and new task;
 installed agent across its folders; edit it, pause it, or close all its spaces. A **paused**
 project waits folded under *Paused* at the end of Projects, and its tasks leave Now and the board of
 every project, but for an agent that needs you or is working; *Make active* brings it back. A project
-where nothing happens (no task changes, no agent works) pauses by itself after 3 days (*Pause quiet
+where nothing happens (no task changes, no agent works) pauses by itself after a day (*Pause quiet
 projects* in the settings: 1, 3, 7, 14 or 30 days, or never), and comes back by itself as soon as
 something does; one you pause stays paused. Work for the whole project
 (its terminal, its agents, a task with a project but no folder) opens in the project's own space,
@@ -235,7 +237,7 @@ file it can't read (it shows what's wrong instead). It never goes in this reposi
 
 ```jsonc
 {
-  "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false, "review_after": 60, "pause_after": 3 },  // agent: a key from Herdr's agent menu; review_after: minutes in To review for no-plan tasks (0: until seen); pause_after: quiet days before a project pauses (0: never)
+  "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false, "review_after": 60, "pause_after": 1 },  // agent: a key from Herdr's agent menu; review_after: minutes in To review for no-plan tasks (0: always); pause_after: quiet days before a project pauses (0: never)
   "projects": [{ "id": "p1", "name": "Acme", "folders": ["~/dev/acme"], "paused": false }],
   "tasks": [{
     "id": "t1", "title": "Add OAuth login", "project": "p1", "folder": "~/dev/acme",

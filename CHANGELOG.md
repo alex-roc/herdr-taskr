@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.1 — 2026-11-14
+
+### Changed
+- A task with no plan no longer leaves *To review* because you look at its terminal (you may be
+  working with it): only after the time set, which now offers *Always* instead of *Until seen*.
+- Quiet projects pause after a day by default (it was 3).
+- **When the agent of a task with no plan quits, its tab is a terminal again.** The task still goes
+  to Done, but it lets go of its tab: Projects shows `>_ zsh · folder` there instead of a checked
+  task over a live shell. Start an agent in that tab again and the same task picks up.
+- **One rule for dimmed rows**, in Now, Projects and the board: a task is dimmed when it's closed,
+  put off with Later, or Idle; not while its agent works or asks for you. Idle rows used to stay
+  lit, and a task put off whose agent asked for you was dimmed in *Needs you*.
+
 ## 1.6.0 — 2026-11-14
 
 **tasker is now taskr** (herdr-taskr). `./install.sh` moves an old install over: it removes the
@@ -14,14 +27,13 @@ terminals labelled `tasker.task` / `tasker.project` are still read. Commands are
   (*Plan it…* in the detail); planned tasks start agents as before.
 - Gone: the *Track agents automatically* setting, *Not in a task* in Now, *Make task*, and the
   board's *No task* lane.
-- **A task with no plan looks after itself**: out of *To review* as soon as you look at its terminal,
-  or after the time set in *To review, for tasks with no plan* (15 min, 1 h, 4 h, 1 day, or until
-  seen), to a new folded *Idle* section while its agent stays open, and back to Doing when the agent works again;
+- **A task with no plan looks after itself**: out of *To review* after the time set in *To review,
+  for tasks with no plan* (15 min, 1 h, 4 h, 1 day, or always), to a new folded *Idle* section while its agent stays open, and back to Doing when the agent works again;
   Done when its agent quits or its tab closes (it used to vanish), resumable from there. *Done today* counts only the tasks you closed.
 - **Delete closes the task's tabs**, agent included (the dialog says so), and the task leaves the
   file; older files' deleted tasks are dropped. A tab whose task was deleted used to stay out of
   every task for good.
-- **Quiet projects pause by themselves**: no task changed and no agent at work for 3 days (*Pause
+- **Quiet projects pause by themselves**: no task changed and no agent at work for a day (*Pause
   quiet projects* in the settings: 1, 3, 7, 14, 30 days or never), and they come back by themselves at
   the next sign of life. A project you pause stays paused.
 - **Move to task…** (a task's menu) moves its agent, conversations and agent time into another task.
@@ -201,7 +213,7 @@ terminals labelled `tasker.task` / `tasker.project` are still read. Commands are
   task, and a *No task* lane on the board to drag one onto a column.
 - **Linear**: *Import Linear issues* brings your open assigned issues into the Inbox with their
   priority and due date (personal API key from `LINEAR_API_KEY` or a key file).
-- **Website** with a tutorial and examples: https://alex-roc.github.io/herdr-tasker/
+- **Website** with a tutorial and examples: https://alex-roc.github.io/herdr-taskr/
 
 ### Fixed
 - Tasks with the same id in `tasks.json` (two entries made in the same second) are told apart.

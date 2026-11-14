@@ -21,7 +21,7 @@ every task by status.
     first 7, then "N more" which opens Projects), Stalled (`ansi3`), Inbox (`dim`, first 5).
     Then **Later** (`dim`,
     folded until opened): tasks put off, soonest back first, *someday* last. Last, **Idle** (`dim`,
-    folded until opened): tasks with no plan whose agent you've seen, newest first.
+    folded until opened): tasks with no plan whose agent has been resting longer than `review_after`, newest first.
     Empty: "Nothing needs you. Press n for a new task, or open Projects to see your folders."
   - **Projects**: a project row (`layers` icon 13px, `dim` when paused; name 12px semibold, count of tasks and
     terminals, chevron); under it the tasks without folder, then folder rows (chevron, `folder` icon, name,
@@ -34,7 +34,7 @@ every task by status.
     there (dimmed while dragged; a 2px `accent` line above or below the target shows where it lands);
     the order is `projects` in tasks.json. Paused projects (`paused: true`) come last, under a
     **Paused** section header (`dim`, folded until opened, as Later). A project pauses by itself after
-    `pause_after` days (setting; 1, 3 by default, 7, 14, 30, 0 for never) with no task changed and no
+    `pause_after` days (setting; 1 by default, 3, 7, 14, 30, 0 for never) with no task changed and no
     agent working or asking (`paused_auto` marks it; `active_at` is when it was made or made active), and
     comes back by itself at the next sign of life; a pause of the person's stays. No project colors: a `color`
     from before stays in the file, unused.
@@ -56,7 +56,9 @@ every task by status.
     folder name in Now, due chip ("2d late" on `blocked`, today/tomorrow on `ansi3`, else `dim`).
     A second 11px line: the agent's question in
     `blocked`, else "opus 5.5 · high · ctx 241k · working 4m" (or "finished 3m ago", "idle 1h"), else
-    "Later · back fri" (title in `dim`) for a task put off, else "→ next step". Hover shows a play
+    "Later · back fri" for a task put off, else "→ next step". The title is `dim` when the task is
+    aside (`aside()` in `lib/util.js`: done, dropped, Later, or Idle), unless its agent works or asks;
+    the board dims the same cards (title `dim`, card at 0.6 but in Done). Hover shows a play
     button on tasks without an agent. Selected row on `selected`.
   - **Terminal row** (a shell in no task): terminal icon, its name (the tab's name, else "zsh ·
     <folder>", never the address) and a second line like a task's. Right-click: a popup (240×150) with
@@ -117,12 +119,14 @@ every task by status.
   done (dot; the task goes to To review), idle (ring). A task's state is its most urgent agent's,
   sub-agents included.
 - A task's life when it has no plan (`auto: true`, see Terminal tasks below): Doing while its agent
-  works or asks, To review once it finishes. It leaves To review when its pane gets the focus
-  (you looked) or after `review_after` minutes (setting, 15, 60 by default, 240, 1440, or 0 for until
-  seen), to Idle (`idle: true`, its status kept) while its agent stays open; it returns to Doing (no
+  works or asks, To review once it finishes. It leaves To review after `review_after` minutes
+  (setting, 15, 60 by default, 240, 1440, or 0 for always; looking at its pane doesn't count, as you may
+  be working with it), to Idle (`idle: true`, its status kept) while its agent stays open; it returns to Doing (no
   longer Idle: any status change clears it) when its agent works again. When its agent quits (30 s) or its tab is gone
-  (1 min) it goes to Done, not deleted: Resume agent still works. A planned task only goes Done by
-  hand. "Done today" doesn't count no-plan tasks. A task created for an idle agent starts as Next,
+  (1 min) it goes to Done, not deleted: Resume agent still works. Once closed it lets go of its
+  tabs (`released` in `lib/world.js`: not in `taskOfTab`, `live` empty), so a tab left open shows as a
+  terminal row, and `adopt` reopens that same task when an agent starts there again. A planned task
+  only goes Done by hand. "Done today" doesn't count no-plan tasks. A task created for an idle agent starts as Next,
   Idle.
 - When a task's agent starts working the task becomes *doing* (from inbox, next, waiting, review or
   done); when it stops after working, a *doing* task becomes *review*. Nothing becomes *done* by
@@ -170,7 +174,7 @@ every task by status.
   +3d, 2w, 12-24, 2026-12-24, with "in 3d · 2026-11-10" beside the label, red border when not
   understood), estimate, next step, notes. Enter saves once.
 - Settings: Now and Projects (Tabs / Stacked, when the layout has `taskr-lists`), steppers for the
-  Doing limit (1–20) and stalled days (1–60), Reminders On/Off, Activity in the details On/Off (off by default), Plan usage On/Off (off by default), To review for tasks with no plan (15 min, 1 h, 4 h, a day, until seen; `review_after`), Pause quiet projects (never, 1, 3, 7, 14, 30 days; `pause_after`),
+  Doing limit (1–20) and stalled days (1–60), Reminders On/Off, Activity in the details On/Off (off by default), Plan usage On/Off (off by default), To review for tasks with no plan (15 min, 1 h, 4 h, a day, always; `review_after`), Pause quiet projects (never, 1, 3, 7, 14, 30 days; `pause_after`),
   and the installed agents as pills (the chosen one stays even if not installed).
 - Resume: while a local Claude Code or Codex agent runs, its session id and folder are kept on the
   task (`sessions`, newest 5). Resume runs the agent's `run` + `--resume <id>` (Codex: `resume <id>`)

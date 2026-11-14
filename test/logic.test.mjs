@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { H, command } from "herdr";
-import { parseDue, dueLabel, slug, shortModel, byRank, reorder, duration, parseLater } from "../mods/taskr/lib/util.js";
+import { parseDue, dueLabel, slug, shortModel, byRank, reorder, duration, parseLater, aside } from "../mods/taskr/lib/util.js";
 import { parse, cleanTask, Store, setStatus, moveTask, toTop, newTask } from "../mods/taskr/lib/store.js";
 import { build, nowView, projectTree } from "../mods/taskr/lib/world.js";
 import { arrived, launch, openInProject, moveRepo } from "../mods/taskr/lib/actions.js";
@@ -124,6 +124,7 @@ test("files from before: repos and repo read as folders and folder, deleted task
   assert.deepEqual(d.tasks.map((t) => [t.id, t.folder, "repo" in t]), [["1", "~/dev/x", false], ["3", "~/notes", false]]);
   assert.equal("track" in d.settings, false);
   assert.equal(d.settings.review_after, 60);
+  assert.equal(d.settings.pause_after, 1);
   assert.equal(parse(JSON.stringify({ settings: { review_after: 7 } })).settings.review_after, 60, "only the offered choices");
   assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.review_after, 0);
 });
@@ -720,26 +721,75 @@ test("a task with no plan is Done when its agent quits, its tab still open; afte
   // Herdr still lists the agent that quit: no second task for the shell.
   await tick(v);
   assert.equal(v.store.data.tasks.filter((t) => t.tabs.includes("tb4")).length, 1);
+  // What's left in its tab is a terminal like any other: not the closed task's row.
+  assert.ok(!v.world.taskOfTab.has("tb4"));
+  assert.ok(v.world.untracked.some((u) => u.tab === "tb4" && !u.agents.length));
+  const tree = projectTree(v.world, v.store.data, H.home, { done: false });
+  const shown = [...tree.projects, tree.orphan].flatMap((p) => [...p.loose, ...[...p.repos.values()].flatMap((r) => r.tasks)]);
+  assert.ok(!shown.some((x) => x.t.id === id), "the closed task isn't shown for its terminal");
+  assert.ok([...tree.projects, tree.orphan].some((p) => [...p.untracked, ...[...p.repos.values()].flatMap((r) => r.untracked)].some((u) => u.tab === "tb4")), "the terminal is");
+  // An agent started again in that tab takes the same task back up.
+  t4.foreground = { pid: 4020, argv: ["claude"], name: "2.1.0" };
+  H.agents.find((a) => a.address === "t4").status = "working";
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.data.tasks.filter((t) => t.tabs.includes("tb4")).length, 1, "no second task");
+  assert.equal(v.store.task(id).status, "doing");
+  assert.equal(v.world.taskOfTab.get("tb4")?.t.id, id);
 });
 
-test("a task with no plan leaves To review for Idle once you look at its terminal, or after the time set; a planned one stays", async () => {
+test("an agent started again in the tab of a closed task with no plan goes on with it; a planned one keeps its tab", async () => {
+  const { adopt } = await import("../mods/taskr/lib/actions.js");
+  world({ tasks: [task({ id: "light", title: "Spike", status: "done", tabs: ["tb4"], auto: true })] });
+  const store = new Store();
+  await store.load();
+  const w = look();
+  const u = w.untracked.find((x) => x.tab === "tb4");
+  assert.ok(u, "its tab belongs to no task");
+  assert.equal(await adopt(store, { ...u, top: "done" }), "light");
+  assert.equal(store.task("light").status, "review");
+  assert.equal(store.data.tasks.filter((t) => t.tabs.includes("tb4")).length, 1);
+  // A closed task you planned keeps its tab: no task is made or reopened for it.
+  world({ tasks: [task({ id: "mine", title: "Mine", status: "done", tabs: ["tb4"] })] });
+  const s2 = new Store();
+  await s2.load();
+  assert.ok(!look().untracked.some((x) => x.tab === "tb4"));
+  assert.equal(await adopt(s2, u), null);
+});
+
+test("dimmed: what's closed, put off or Idle, unless its agent works or asks", () => {
+  const later = "2999-01-01";
+  assert.equal(aside({ status: "doing" }), false);
+  assert.equal(aside({ status: "done" }), true);
+  assert.equal(aside({ status: "dropped" }), true);
+  assert.equal(aside({ status: "next", snooze: later }), true);
+  assert.equal(aside({ status: "next", snooze: "someday" }, "idle"), true);
+  assert.equal(aside({ status: "review", auto: true, idle: true }), true, "Idle");
+  assert.equal(aside({ status: "review", idle: true }), false, "only a task with no plan is Idle");
+  assert.equal(aside({ status: "next", snooze: later }, "working"), false, "put off, but its agent works");
+  assert.equal(aside({ status: "review", auto: true, idle: true }, "blocked"), false, "Idle, but its agent asks");
+});
+
+test("a task with no plan leaves To review for Idle after the time set, not because you look at it; a planned one stays", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
   const resting = () => v.store.task(id).status === "review" && v.store.task(id).idle === true;
   // review1 (planned, agent t8 finished) and the light one are both in Review.
   assert.equal(v.store.task("review1").status, "review");
-  // Its terminal in front: seen, so it's Idle. The planned one, in front too, stays.
+  // Its terminal in front: you may be working with it, so it stays in To review.
   H.focused = { pane: "p4" };
   await tick(v);
+  assert.equal(v.store.task(id).status, "review");
+  assert.equal(v.store.task(id).idle, undefined);
+  // After the time set (an hour by default): Idle, still open; the planned one stays.
+  await v.store.update((d) => { for (const t of d.tasks) if (t.id === id || t.id === "review1") t.history.at(-1).at -= 61 * 60000; });
+  await tick(v);
   assert.ok(resting(), "Idle, still open");
+  assert.equal(v.store.task("review1").idle, undefined);
   v.render(cx());
   const now = nowView(v.world, v.store.data);
   assert.ok(now.idle.some((x) => x.t.id === id) && !now.review.some((x) => x.t.id === id) && !now.later.some((x) => x.t.id === id));
-  H.focused = { pane: "p8" };
-  await tick(v);
-  assert.equal(v.store.task("review1").status, "review");
-  assert.equal(v.store.task("review1").idle, undefined);
-  // It works again: Doing, no longer Idle; finished again: To review, until the time set has passed.
+  // It works again: Doing, no longer Idle; finished again: To review.
   H.focused = null;
   H.agents.find((a) => a.address === "t4").status = "working";
   await tick(v);
@@ -748,11 +798,8 @@ test("a task with no plan leaves To review for Idle once you look at its termina
   H.agents.find((a) => a.address === "t4").status = "done";
   await tick(v);
   assert.equal(v.store.task(id).status, "review");
-  await v.store.update((d) => { const t = d.tasks.find((x) => x.id === id); t.history.at(-1).at -= 61 * 60000; });
-  await tick(v);
-  assert.ok(resting(), "after an hour (the default)");
-  // Until seen: the time never moves it.
-  await v.store.update((d) => { d.settings.review_after = 0; const t = d.tasks.find((x) => x.id === id); delete t.idle; t.history.at(-1).at -= 99 * 3600000; });
+  // Always: the time never moves it.
+  await v.store.update((d) => { d.settings.review_after = 0; d.tasks.find((x) => x.id === id).history.at(-1).at -= 99 * 3600000; });
   await tick(v);
   assert.equal(v.store.task(id).idle, undefined);
   // Its agent quits: Done (resumable), Idle or not.
@@ -768,7 +815,7 @@ test("a task with no plan leaves To review for Idle once you look at its termina
 test("quiet projects pause by themselves and come back at the next sign of life; one you pause stays", async () => {
   const old = Date.now() - 5 * DAY;
   // pa (App) has an agent at work (doing1, t1); pw (Website) and pq (quiet) have had nothing for days.
-  const v = await sidebar({ projects: [
+  const v = await sidebar({ settings: { pause_after: 1 }, projects: [
     { id: "pa", name: "App", repos: ["~/dev/app"], active_at: old },
     { id: "pw", name: "Website", repos: ["~/dev/web"], active_at: old },
     { id: "pq", name: "Quiet", repos: [], active_at: old },

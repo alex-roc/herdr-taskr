@@ -125,6 +125,11 @@ export function isLater(t, day = today()) {
   return t?.snooze === "someday" || (typeof t?.snooze === "string" && t.snooze > day);
 }
 
+// A task set aside, dimmed wherever it shows: closed, put off, or Idle (no plan, its agent seen
+// and waiting). Not while its agent works or asks for you: then it's lit, wherever it is.
+export const aside = (t, top = null) => !["working", "blocked"].includes(top)
+  && (["done", "dropped"].includes(t?.status) || isLater(t) || (t?.auto === true && t?.idle === true));
+
 export const laterLabel = (snooze) => (snooze === "someday" ? "someday" : dueLabel(snooze));
 
 // What a person types for Later: a due-date word for a day after today, or "someday".

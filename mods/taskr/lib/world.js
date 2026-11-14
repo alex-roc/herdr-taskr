@@ -23,6 +23,9 @@ export const agentInFront = (t) => Boolean(t?.program?.agent) || /(^|\/)(claude|
 // terminal, or one that doesn't say, counts as still running its agent.
 export const shellOnly = (t) => Boolean(t?.foreground) && t.pid != null && t.foreground.pid === t.pid && !agentInFront(t);
 
+// A task with no plan, closed: its tabs are no longer its own.
+export const released = (t) => t?.auto === true && !OPEN.has(t.status);
+
 // Live sub-agents of `addr`, depth first.
 function kids(ts, addr, depth = 1) {
   return ts.filter((k) => k.parent === addr && k.state === "live")
@@ -87,8 +90,10 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
     const x = id && taskById.get(id);
     if (x && tab && !x.tabs.includes(tab)) x.tabs.push(tab);
   }
+  // A task with no plan lets go of its tabs once it's closed (its agent quit): what's left in
+  // them is a terminal like any other, and an agent started there again takes the task back up.
   const taskOfTab = new Map();
-  for (const x of tasks) for (const tab of x.tabs) taskOfTab.set(tab, x);
+  for (const x of tasks) if (!released(x.t)) for (const tab of x.tabs) taskOfTab.set(tab, x);
 
   const projectOfRepo = new Map();
   for (const p of data.projects) for (const r of p.folders ?? []) projectOfRepo.set(tilde(untilde(r, h), h), p.id);
@@ -116,7 +121,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
 
   for (const x of tasks) {
     x.agents = x.tabs.flatMap((tab) => byTab.get(tab) ?? []);
-    x.live = x.tabs.filter((tab) => spaceOfTab.has(tab));
+    x.live = released(x.t) ? [] : x.tabs.filter((tab) => spaceOfTab.has(tab));
     x.top = x.agents.reduce((m, e) => ((RANK[e.top] ?? 0) > (RANK[m] ?? 0) ? e.top : m), null);
     x.project = x.t.project ?? (x.t.folder ? projectOfRepo.get(x.t.folder) ?? null : null);
     x.open = OPEN.has(x.t.status);
