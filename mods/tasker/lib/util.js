@@ -41,6 +41,13 @@ export function untilde(path, home) {
   return path.startsWith("~") ? home + path.slice(1) : path;
 }
 
+// Where a project's own work runs: the folder holding all its repositories, else (none yet,
+// or nothing in common but a folder above home, like /Users) the home folder.
+export function projectFolder(repos, h) {
+  const c = commonDir(repos);
+  return c && !(h + "/").startsWith(c + "/") ? c : h;
+}
+
 // Where work across several repositories happens: the nearest folder holding them all
 // (~/dev for ~/dev/a and ~/dev/b; a lone repository's parent). Absolute paths in, null if none.
 export function commonDir(paths) {

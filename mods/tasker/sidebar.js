@@ -7,18 +7,21 @@ import { v_flex, h_flex } from "gpui-base";
 import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop } from "./lib/store.js";
-import { nowView, projectTree, untrackedName, agentTitle } from "./lib/world.js";
-import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard } from "./lib/actions.js";
-import { RANK, shortModel, kilo, base, tilde, today, isLater, laterLabel } from "./lib/util.js";
+import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere } from "./lib/world.js";
+import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, moveRepo } from "./lib/actions.js";
+import { RANK, tilde, today, isLater, laterLabel } from "./lib/util.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
 import { Revive } from "./lib/revive.js";
 import { openDialog } from "./lib/open.js";
-import { projectColor } from "./dialogs.js";
 
 // A light task whose agent quit goes this long after (time for an agent to come back by itself
 // after a restart, or for you to start it again in the same tab).
 const QUIT_MS = 30000;
+// The stacked lists' blocks in the layout, and the height of a folded one (its header).
+const STACK = { projects: "tasker-projects", now: "tasker-now" };
+const STACK_HEADER = 41;
+
 const lead = (x) => [...(x.agents ?? [])].sort((a, b) => (RANK[b.top] ?? 0) - (RANK[a.top] ?? 0))[0] ?? null;
 
 export const Sidebar = {
@@ -68,6 +71,23 @@ export const Sidebar = {
     if (!this.fixedView || !shownLists().includes(next)) return setShared("tasker.view", next);
     sharedCache("lists").info.focus = next;
     setShared("tasker.listFocus", Date.now()); // redraws every list; that one takes the keys
+  },
+
+  // Stacked lists (Projects over Now): one folds to its header and the other takes the room;
+  // never both. Herdr keeps the sizes; which one is folded is shared by both copies.
+  stackFold(view, fold) {
+    const other = view === "now" ? "projects" : "now";
+    if (fold) {
+      run("layout.resize", { id: STACK[view], px: STACK_HEADER });
+      run("layout.resize", { id: STACK[other], weight: 1 });
+    } else run("layout.resize", { id: STACK[view], weight: 1 });
+    setShared("tasker.stackFolded", fold ? view : null);
+  },
+
+  // All the room to this one: the other folds (this one unfolds first if it was).
+  stackFocus(view) {
+    if (shared("tasker.stackFolded") === view) this.stackFold(view, false);
+    this.stackFold(view === "now" ? "projects" : "now", true);
   },
 
   fold(id, cx) {
@@ -164,16 +184,22 @@ export const Sidebar = {
       const sp = spaces();
       const left = [];
       const taken = new Set(w.taskOfTab.keys());
+      const ts = terminals();
       for (const p of pending) {
-        const tab = arrived({ ...p, beforeTabs: new Set(p.beforeTabs), beforeSpaces: new Set(p.beforeSpaces) }, sp, taken);
-        if (tab) {
+        const tab = p.tab ?? arrived({ ...p, beforeTabs: new Set(p.beforeTabs), beforeSpaces: new Set(p.beforeSpaces) }, sp, taken);
+        // A project's tab is known only by the label on its terminals: it waits (a minute at
+        // most) until its first terminal is there to be labelled, which can be a look later.
+        if (tab && p.project && !ts.some((x) => x.labels?.["herdr.tab"] === tab)) {
           taken.add(tab);
-          if (p.project) cx.spawn(async () => labelProject(p.project, tab, terminals()));
-          else cx.spawn(async () => link(this.store, p.task, tab, terminals()));
+          if (now - p.at < 60000) left.push({ ...p, tab });
+        } else if (tab) {
+          taken.add(tab);
+          if (p.project) cx.spawn(async () => labelProject(p.project, tab, ts));
+          else cx.spawn(async () => link(this.store, p.task, tab, ts));
         }
         else if (now - p.at < 30000) left.push(p);
       }
-      if (left.length !== pending.length) setShared("tasker.pending", left);
+      if (left.length !== pending.length || left.some((p, i) => p !== pending[i])) setShared("tasker.pending", left);
     }
     // Agent time, per agent.
     const live = new Set();
@@ -299,6 +325,17 @@ export const Sidebar = {
     cx.notify();
   },
 
+  // A repository (or folder) dropped on a project's header: it moves there ("No project": out).
+  dropRepo(cx, projectId) {
+    const from = this.dragRepo;
+    this.dragRepo = null;
+    this.dragOver = null;
+    if (!from || from.project === projectId) return cx.notify();
+    cx.stop_propagation();
+    cx.spawn(async () => this.store.update((d) => moveRepo(d, from.key, projectId, home())));
+    cx.notify();
+  },
+
   // A task dropped on another row: it takes that one's place in the list (`ids`, in order).
   // From Inbox onto Up next (or back) it changes list too.
   dropTask(cx, target, ids) {
@@ -328,17 +365,19 @@ export const Sidebar = {
 
   // ── Rows ────────────────────────────────────────────────────────────────
   // `ids`: the list it's in, in order, when it can be dragged to another place in it.
-  taskRow(t, x, { showRepo = false, depth = 0, ids = null } = {}) {
+  taskRow(t, x, { showWhere = false, depth = 0, ids = null } = {}) {
     const task = x.t;
     const e = lead(x);
-    const info = e ? this.info.get(e.a.address) : null;
     const selected = shared("tasker.selected") === task.id;
     const blocked = e?.top === "blocked";
     const msg = blocked ? (e.report?.msg ?? "").replace(/^answer:\s*/i, "") : null;
     const since = this.sinceOf(e);
-    const meta = e ? [shortModel(info?.model), info?.effort, info?.ctx ? S.ctx(kilo(info.ctx)) : null, agentFor(e.top, since)].filter(Boolean).join(" · ") : null;
     const later = isLater(task) ? S.laterUntil(laterLabel(task.snooze)) : null;
-    const second = msg || meta || later || (task.next_step ? `→ ${task.next_step}` : null);
+    // Where it is (Projects' outline already says it), then how long its agent has been as it is.
+    // Model, effort and context live in the terminal's header and the detail.
+    const where = showWhere ? taskWhere(this.store.data, x, home()) : null;
+    const tail = (e ? agentFor(e.top, since) : null) ?? later ?? (task.next_step ? `→ ${task.next_step}` : null);
+    const second = msg || [where, tail].filter(Boolean).join(" · ") || null;
     const done = task.status === "done" || task.status === "dropped";
     const due = done ? null : dueChip(t, task.due);
     // Another row held over this one: a line shows where it lands (below when it comes from above).
@@ -366,24 +405,23 @@ export const Sidebar = {
       .child(h_flex().h(20).gap(7).items_center()
         .child(taskMark(t, task, e?.top))
         .child(div().flex_1().min_w(0).truncate().text_color(done || later ? t.dim : t.foreground).when(e?.top === "done", (el) => el.font_semibold()).child(task.title))
-        .when(showRepo && Boolean(task.repo), (el) => el.child(div().flex_none().max_w(90).truncate().text_size(11).text_color(t.dim).child(base(task.repo))))
         .when(this.hovered === task.id && !e && !done, (el) => el.child(iconButton(t, `go-${task.id}`, "play", S.startHint, (_e, cx) => this.launch(cx, task, false))))
         .when(Boolean(due), (el) => el.child(due)))
       .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : t.dim).child(second)));
   },
 
-  untrackedRow(t, u, depth = 0) {
+  untrackedRow(t, u, depth = 0, showWhere = false) {
     const e = u.agents[0];
     const p0 = u.panes[0];
     const name = untrackedName(u);
     const pic = programIcon(e?.a.program ?? p0?.program, 14, t.muted) ?? icon("square-terminal", 13, t.dim);
     const pane = e?.a.pane ?? p0?.pane;
-    const info = e ? this.info.get(e.a.address) : null;
-    // The same second line as a task's: model, effort, context, how long in this state.
-    const meta = e ? [shortModel(info?.model), info?.effort, info?.ctx ? S.ctx(kilo(info.ctx)) : null, agentFor(u.top ?? e.status, this.sinceOf(e))].filter(Boolean).join(" · ") : "";
+    // The same second line as a task's: where it is, how long in this state.
+    const where = showWhere ? looseWhere(this.world, this.store.data, u, home()) : null;
+    const time = e ? agentFor(u.top ?? e.status, this.sinceOf(e)) : null;
     const blocked = u.top === "blocked";
     const msg = blocked ? (e?.report?.msg ?? "").replace(/^answer:\s*/i, "") : "";
-    const second = msg || meta;
+    const second = msg || [where, time].filter(Boolean).join(" · ");
     return v_flex().id(`u-${u.tab}`).pl(8 + depth * 14).pr(6).py(3).flex_none().gap(1).rounded(8)
       .cursor_pointer().hover((s) => s.bg(t.hover))
       .on_click(() => pane && run("pane.focus", { pane }))
@@ -415,8 +453,8 @@ export const Sidebar = {
       if (!open) return;
       // Later keeps its order by day; every other list can be reordered by dragging.
       const ids = shut ? null : list.map((x) => x.t.id);
-      for (const x of list.slice(0, max)) { rows.push(this.taskRow(t, x, { showRepo: true, ids })); order.push(x.t.id); }
-      for (const u of untracked) rows.push(this.untrackedRow(t, u));
+      for (const x of list.slice(0, max)) { rows.push(this.taskRow(t, x, { showWhere: true, ids })); order.push(x.t.id); }
+      for (const u of untracked) rows.push(this.untrackedRow(t, u, 0, true));
       if (list.length > max) rows.push(div().id(`more-${id}`).pl(31).h(22).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => setShared("tasker.view", "projects")).child(S.more(list.length - max)));
     };
@@ -450,7 +488,11 @@ export const Sidebar = {
         .hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => this.fold(id, cx))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openDialog("repo", { repo: r.key, project: proj?.id ?? null }); })
+        // Dragged onto a project's header, it moves to that project.
+        .on_mouse_down("left", () => { this.dragRepo = { key: r.key, project: proj?.id ?? null }; this.dragOver = null; })
+        .when(this.dragRepo?.key === r.key && Boolean(this.dragOver), (el) => el.opacity(0.45))
         .child(svg(CHEVRON(open)).size(10).flex_none().text_color(t.dim))
+        .child(icon("folder", 12, live ? t.muted : t.dim))
         .child(div().flex_none().max_w(150).truncate().text_color(live ? t.foreground : t.dim).child(r.name))
         .when(Boolean(st?.branch), (el) => el.child(div().id(`br-${id}`).min_w(0).truncate().text_size(11).text_color(t.dim).tooltip(S.branchHint(st.branch)).child(`⎇ ${st.branch}`)))
         .when((st?.ahead ?? 0) > 0, (el) => el.child(div().id(`ah-${id}`).text_size(10.5).text_color(t.dim).tooltip(S.aheadHint(st.ahead)).child(`↑${st.ahead}`)))
@@ -476,19 +518,26 @@ export const Sidebar = {
       const order = this.store.data.projects.map((y) => y.id);
       const dragging = Boolean(p) && this.dragProject && this.dragOver === p.id && this.dragProject !== p.id;
       const below = dragging && order.indexOf(this.dragProject) < order.indexOf(p.id);
+      // A repository dragged over it: the project it would go to is lit.
+      const target = p?.id ?? null;
+      const repoOver = Boolean(this.dragRepo) && this.dragOver === `p:${target ?? "-"}` && this.dragRepo.project !== target;
       rows.push(h_flex().id(id).px(8).pt(8).h(32).flex_none().gap(7).items_center().cursor_pointer()
         .when(Boolean(p) && this.dragProject === p.id && Boolean(this.dragOver) && this.dragOver !== p.id, (el) => el.opacity(0.45))
         .when(dragging && !below, (el) => el.border_t(2).border_color(t.accent))
         .when(dragging && below, (el) => el.border_b(2).border_color(t.accent))
+        .when(repoOver, (el) => el.rounded(6).bg(t.selected))
         .on_click((_e, cx) => this.fold(id, cx))
         .on_mouse_down("right", (_e, cx) => { if (p) { cx.stop_propagation(); openDialog("project-menu", { project: p.id }); } })
-        .when(Boolean(p), (el) => el
-          .on_mouse_down("left", () => { this.dragProject = p.id; this.dragOver = null; })
-          .on_mouse_move((_e, cx) => { if (this.dragProject && this.dragOver !== p.id) { this.dragOver = p.id; cx.notify(); } })
-          .on_mouse_up("left", (_e, cx) => this.dropProject(cx, p.id)))
+        .when(Boolean(p), (el) => el.on_mouse_down("left", () => { this.dragProject = p.id; this.dragOver = null; }))
+        // Over it: a project being dragged (to reorder) or a repository (to move it here).
+        .on_mouse_move((_e, cx) => {
+          const over = this.dragRepo ? id : this.dragProject && p ? p.id : null;
+          if (over && this.dragOver !== over) { this.dragOver = over; cx.notify(); }
+        })
+        .on_mouse_up("left", (_e, cx) => { if (this.dragRepo) this.dropRepo(cx, target); else if (p) this.dropProject(cx, p.id); })
         .on_hover((on, cx) => { this.hovered = on ? id : this.hovered === id ? null : this.hovered; cx.notify(); })
-        .child(div().size(9).rounded(3).flex_none().bg(p ? projectColor(p) : t.dim))
-        .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().text_color(p ? t.foreground : t.dim).child(p?.name ?? S.noProject))
+        .child(icon("layers", 13, p && !p.paused ? t.muted : t.dim))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().text_color(p && !p.paused ? t.foreground : t.dim).child(p?.name ?? S.noProject))
         .when(!open && Boolean(x.top), (el) => el.child(agentMark(t, x.top)))
         .when(acts, (el) => el
           .child(iconButton(t, `pboard-${id}`, "square-kanban", S.boardOf(p.name), () => openBoard(p)))
@@ -506,6 +555,13 @@ export const Sidebar = {
     };
     for (const x of tree.projects) projectHeader(x);
     if (tree.orphan.count || tree.orphan.repos.size) projectHeader(tree.orphan);
+    // Paused projects: folded at the end until opened (out of the way is the point, as Later).
+    if (tree.paused.length) {
+      const key = "paused:open";
+      const open = this.folded.has(key);
+      rows.push(sectionHeader(t, "sec-paused", S.pausedProjects, tree.paused.length, t.dim, open, (cx) => this.fold(key, cx)));
+      if (open) for (const x of tree.paused) projectHeader(x);
+    }
     this.order = order;
     if (!rows.length) rows.push(div().px(12).pt(12).text_size(12).text_color(t.dim).child(S.emptyProjects));
     return rows;
@@ -515,6 +571,7 @@ export const Sidebar = {
     const t = theme();
     const w = this.world;
     const view = this.view();
+    const stackFolded = Boolean(this.fixedView) && shared("tasker.stackFolded") === this.fixedView;
     // Asked to take the keys (tab in the other list).
     const lists = sharedCache("lists").info;
     if (this.fixedView && lists.focus === this.fixedView) { lists.focus = null; this.handle.focus(); }
@@ -531,11 +588,16 @@ export const Sidebar = {
       .hover((s) => s.bg(t.hover)).on_click(() => setShared("tasker.view", id)).child(icon(id === "now" ? "zap" : "folder-tree", 13)).child(label);
     return v_flex().id("tasker-sidebar").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       // Released anywhere but on a project: the drag is off.
-      .on_mouse_up("left", (_e, cx) => { if (this.dragProject || this.dragTask) { this.dragProject = null; this.dragTask = null; this.dragOver = null; cx.notify(); } })
+      .on_mouse_up("left", (_e, cx) => { if (this.dragProject || this.dragTask || this.dragRepo) { this.dragProject = null; this.dragTask = null; this.dragRepo = null; this.dragOver = null; cx.notify(); } })
       .size_full().min_h(0).bg(t.chrome).text_size(12.8).text_color(t.foreground)
       .child(h_flex().px(10).h(40).flex_none().gap(4).items_center().border_b(1).border_color(t.border)
         .when(!this.fixedView, (el) => el.child(tabBtn("now", S.now)).child(tabBtn("projects", S.projects)))
-        .when(Boolean(this.fixedView), (el) => el.child(h_flex().px(4).gap(6).items_center().text_size(12).font_medium().text_color(t.muted)
+        // Stacked: the chevron folds this list to its header (the other takes the room); a
+        // double click on its name gives it the room.
+        .when(Boolean(this.fixedView), (el) => el.child(h_flex().id("stack-fold").px(4).h(24).gap(6).rounded(6).items_center().text_size(12).font_medium()
+          .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(stackFolded ? S.stackUnfold : S.stackFold)
+          .on_click((e, cx) => { if ((e?.click_count ?? 1) >= 2) this.stackFocus(view); else this.stackFold(view, !stackFolded); cx.notify(); })
+          .child(svg(CHEVRON(!stackFolded)).size(10).flex_none().text_color(t.dim))
           .child(icon(view === "now" ? "zap" : "folder-tree", 13)).child(view === "now" ? S.now : S.projects)))
         .child(div().flex_1())
         .when(view === "projects", (el) => el.child(iconButton(t, "flt-done", this.filters.done ? "eye" : "eye-off", this.filters.done ? S.hideDone : S.showDone, (_e, cx) => {
@@ -546,7 +608,7 @@ export const Sidebar = {
         .child(iconButton(t, "jump", "search", S.searchTasks, () => this.command("jump", null)))
         .child(iconButton(t, "add-task", "plus", S.newTask, () => this.openTaskForm({}))))
       .when(Boolean(this.store.error), (el) => el.child(div().px(12).py(6).text_size(11).text_color(t.blocked).child(this.store.error)))
-      .child(v_flex().id("tasker-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows));
+      .when(!stackFolded, (el) => el.child(v_flex().id("tasker-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows)));
   },
 };
 

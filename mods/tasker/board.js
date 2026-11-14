@@ -4,15 +4,14 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { theme, setShared, run, shared, props } from "herdr";
+import { theme, setShared, run, shared, props, home } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask } from "./lib/store.js";
-import { RANK, byRank, base, shortModel, issueLabel, isLater, laterLabel } from "./lib/util.js";
+import { RANK, byRank, issueLabel, isLater, laterLabel } from "./lib/util.js";
 import { statusIcon, taskMark, dueChip, chip, iconButton, icon, agentFor, agentMark, programIcon } from "./lib/ui.js";
-import { untrackedName } from "./lib/world.js";
+import { untrackedName, taskWhere, looseWhere, pausedProjects } from "./lib/world.js";
 import { adopt, openBoard } from "./lib/actions.js";
 import { openDialog } from "./lib/open.js";
-import { projectColor } from "./dialogs.js";
 
 const COLUMNS = ["inbox", "next", "doing", "waiting", "review", "done"];
 const DONE_DAYS = 7;
@@ -32,9 +31,12 @@ export const Board = {
   boardColumns(w) {
     const now = Date.now();
     const cols = Object.fromEntries(COLUMNS.map((c) => [c, []]));
+    const paused = pausedProjects(this.store.data);
     for (const x of w.tasks) {
       if (x.t.archived || x.t.status === "dropped") continue;
       if (this.boardProject && x.project !== this.boardProject) continue;
+      // Every project's board leaves paused ones out, but for an agent that needs you or works.
+      if (!this.boardProject && paused.has(x.project) && !["blocked", "working"].includes(x.top)) continue;
       if (x.t.status === "done" && now - (x.t.done_at ?? 0) > DONE_DAYS * 86400000 && !x.live.length) continue;
       cols[x.t.status]?.push(x);
     }
@@ -98,15 +100,15 @@ export const Board = {
   card(t, x, ids = []) {
     const task = x.t;
     const e = [...x.agents].sort((a, b) => (RANK[b.top] ?? 0) - (RANK[a.top] ?? 0))[0];
-    const info = e ? this.info.get(e.a.address) : null;
     const blocked = e?.top === "blocked";
     const selected = shared("tasker.selected") === task.id;
     const lifted = this.pressed === task.id && ((this.over && this.over !== task.status) || (this.overCard && this.overCard !== task.id));
     // Another card held over this one: a line shows where it lands (below when it comes from above).
     const target = Boolean(this.pressed) && !String(this.pressed).startsWith("tab:") && this.overCard === task.id && this.pressed !== task.id;
     const below = target && ids.indexOf(this.pressed) >= 0 && ids.indexOf(this.pressed) < ids.indexOf(task.id);
-    const meta = e ? [shortModel(info?.model), info?.effort, agentFor(e.top, this.sinceOf(e))].filter(Boolean).join(" · ") : null;
-    const project = this.store.project(x.project);
+    // As a row in Now: where it is (a project's board leaves its name out), how long its agent
+    // has been as it is. Model, effort and context are in the terminal's header and the detail.
+    const meta = [taskWhere(this.store.data, x, home(), { project: !this.boardProject }), e ? agentFor(e.top, this.sinceOf(e)) : null].filter(Boolean).join(" · ");
     const due = task.status === "done" ? null : dueChip(t, task.due);
     return v_flex().id(`card-${task.id}`).p(9).gap(6).flex_none().rounded(9).bg(t.background)
       .border_1().border_color(blocked ? t.blocked : selected ? t.accent : t.border)
@@ -133,21 +135,17 @@ export const Board = {
       .when(Boolean(task.next_step) && task.status !== "done", (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(`→ ${task.next_step}`)))
       .when(blocked && Boolean(e?.report?.msg), (el) => el.child(div().text_size(11).text_color(t.blocked).child(e.report.msg.replace(/^answer:\s*/i, ""))))
       .when(!blocked && Boolean(meta), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(meta)))
-      .child(h_flex().gap(5).items_center().flex_wrap()
+      .when(Boolean(due) || isLater(task) || Boolean(task.issue) || Boolean(task.branch), (row) => row.child(h_flex().gap(5).items_center().flex_wrap()
         .when(Boolean(due), (el) => el.child(due))
         .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze)), t.dim)))
         .when(Boolean(task.issue), (el) => el.child(chip(t, issueLabel(task.issue), t.dim)))
-        .when(Boolean(task.branch), (el) => el.child(h_flex().gap(3).items_center().text_size(10).text_color(t.dim).child(icon("git-branch", 11)).child(task.branch.replace(/^task\//, ""))))
-        .child(div().flex_1())
-        .when(Boolean(project) && !this.boardProject, (el) => el.child(div().size(7).rounded(2).bg(projectColor(project))))
-        .when(Boolean(task.repo), (el) => el.child(div().text_size(10.5).text_color(t.dim).child(base(task.repo)))));
+        .when(Boolean(task.branch), (el) => el.child(h_flex().gap(3).items_center().text_size(10).text_color(t.dim).child(icon("git-branch", 11)).child(task.branch.replace(/^task\//, ""))))));
   },
 
   // Agents in no task, as cards to drag onto a column.
   looseCard(t, u) {
     const e = u.agents[0];
-    const info = e ? this.info.get(e.a.address) : null;
-    const meta = e ? [shortModel(info?.model), info?.effort, agentFor(u.top ?? e.status, this.sinceOf(e))].filter(Boolean).join(" · ") : "";
+    const meta = [looseWhere(this.world, this.store.data, u, home(), { project: !this.boardProject }), e ? agentFor(u.top ?? e.status, this.sinceOf(e)) : null].filter(Boolean).join(" · ");
     const lifted = this.pressed === `tab:${u.tab}` && this.over && this.over !== "loose";
     return v_flex().id(`loose-${u.tab}`).p(9).gap(5).flex_none().rounded(9).bg(t.background)
       .border_1().border_color(u.top === "blocked" ? t.blocked : t.border).when(lifted, (el) => el.opacity(0.45))
@@ -157,8 +155,7 @@ export const Board = {
       .child(h_flex().gap(7).items_center()
         .child(h_flex().w(16).justify_center().child(agentMark(t, u.top ?? e?.status) ?? (programIcon(e?.a.program, 14, t.muted) ?? div())))
         .child(div().flex_1().min_w(0).truncate().text_size(12.5).child(untrackedName(u))))
-      .when(Boolean(meta), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(meta)))
-      .child(div().text_size(10.5).text_color(t.dim).child(base(u.where.key ?? "")));
+      .when(Boolean(meta), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(meta)));
   },
 
   looseColumn(t, list) {
@@ -207,13 +204,13 @@ export const Board = {
     // Agents in no task (of the shown project, when one is picked).
     const loose = this.world.untracked.filter((u) => u.agents.length && (!this.boardProject || (u.project ?? this.world.projectOfRepo.get(u.where.key)) === this.boardProject));
     // A pill per board: this one lit, the others go to their tab (made when not open).
-    const pill = (id, label, color) => {
+    const pill = (id, label) => {
       const here = this.boardProject === id;
       return h_flex().id(`bp-${id ?? "all"}`).px(9).h(24).gap(6).rounded(6).items_center().text_size(12)
         .bg(here ? t.selected : t.canvas).text_color(here ? t.foreground : t.muted)
         .when(!here, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(id ? S.boardOf(label) : S.boardAll)
           .on_click(() => openBoard(id ? this.store.project(id) : null)))
-        .when(Boolean(color), (el) => el.child(div().size(8).rounded(2).bg(color))).child(label);
+        .when(Boolean(id), (el) => el.child(icon("layers", 12))).child(label);
     };
     return v_flex().id("tasker-board").size_full().min_h(0).bg(t.canvas).text_color(t.foreground)
       // Released outside any column: the drag is off.
@@ -221,7 +218,8 @@ export const Board = {
       .child(h_flex().px(14).h(44).flex_none().gap(6).items_center()
         .child(div().pr(8).text_size(14).font_semibold().child(S.board))
         .child(pill(null, S.allProjects))
-        .children(this.store.data.projects.map((p) => pill(p.id, p.name, projectColor(p))))
+        // Paused projects have no pill, but for the one this board is.
+        .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.boardProject).map((p) => pill(p.id, p.name)))
         .child(div().flex_1())
         .child(div().text_size(11).text_color(t.dim).child(S.boardHint)))
       .child(h_flex().id("board-cols").flex_1().min_h(0).px(14).pb(14).gap(10).items_start().overflow_x_scrollbar()

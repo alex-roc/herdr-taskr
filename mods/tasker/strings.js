@@ -54,8 +54,8 @@ export const S = {
   newAgent: (name) => `New ${name} here`,
   repoMenu: "More",
   importIssues: "Import GitHub issues",
-  moveToProject: "Project",
-  noProjectShort: "None",
+  moveToProject: "Move to project",
+  noProjectShort: "No project",
 
   // Task actions
   start: "Start agent",
@@ -106,9 +106,26 @@ export const S = {
   // Project form
   name: "Name",
   namePlaceholder: "Project name",
-  color: "Color",
   repos: "Repositories",
-  reposHint: "Tick the ones that belong to this project, or add a folder that isn't open in Herdr.",
+  reposHint: "None yet. Add a repository, or a folder that holds several (~/dev) to pick from.",
+  removeRepo: "Remove from the project",
+  filterRepos: "Filter",
+  lookingIn: (f) => `Looking in ${f}…`,
+  reposIn: (n, f) => (n === 1 ? `1 repository in ${f}` : `${n} repositories in ${f}`),
+  noReposIn: "No repositories right inside it.",
+  addAll: (n) => `Add all ${n}`,
+  closeList: "Close the list",
+  projectState: "State",
+  projectActive: "Active",
+  projectPaused: "Paused",
+  pausedHint: "Its tasks leave Now and the board of every project",
+  pausedProjects: "Paused",
+  pauseProject: "Pause project",
+  activateProject: "Make active",
+  removeFromProject: (name) => `Remove from ${name}`,
+  moveRepoTitle: (repo) => `Move ${repo} to`,
+  stackFold: "Fold this list (double-click: give it the room)",
+  stackUnfold: "Unfold this list (double-click: give it the room)",
   addFolder: "Add folder",
   projectMenu: "Project menu",
   // Later
@@ -120,7 +137,7 @@ export const S = {
   laterTomorrow: "Tomorrow",
   laterNextWeek: "Next week",
   laterSomeday: "Someday",
-  laterPick: "Pick…",
+  laterDay: "Or a day",
   laterTitle: (title) => `Later: ${title}`,
   laterPlaceholder: "tomorrow, fri, +3d, 2w, 12-24, someday",
   laterBad: "Not a day tasker understands",
@@ -148,7 +165,7 @@ export const S = {
   projectTaskHint: "New task for the whole project (its agent works across every repository)",
   editProjectItem: "Edit project",
   workInHome: "No repositories yet: in your home folder",
-  addFolderPrompt: "A repository for this project",
+  addFolderPrompt: "Add",
   inProject: (name) => `in ${name}`,
 
   // Settings
@@ -182,6 +199,12 @@ export const S = {
   // How long an agent has been in its state.
   agentFor: { working: (d) => `working ${d}`, blocked: (d) => `waiting ${d}`, done: (d) => `finished ${d} ago`, idle: (d) => `idle ${d}`, unknown: (d) => `running ${d}` },
   ctx: (k) => `ctx ${k}`,
+  // A terminal's header
+  paneSplitRight: "Split right",
+  paneSplitDown: "Split down",
+  paneZoom: "Zoom",
+  paneUnzoom: "Unzoom",
+  paneClose: "Close",
 
   // Status bar
   doneToday: (n) => `${n} done today`,

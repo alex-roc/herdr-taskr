@@ -15,7 +15,7 @@ check() {
   label=$1 json=$2
   dir="$WORK/$label"
   rm -rf "$dir" && cp -R "$SRC" "$dir"
-  for f in "$dir/main.js" "$dir/dialogs.js"; do
+  for f in "$dir/main.js" "$dir/dialogs.js" "$dir/pane.js"; do
     # props() → this case's props; the import of props stays harmless.
     perl -pi -e 's/\bprops\(\)/__checkProps()/g' "$f"
     printf 'const __checkProps = () => (%s);\n' "$json" >> "$f"
@@ -29,7 +29,8 @@ check() {
 
 check plain '{}'
 for role in sidebar detail status board; do check "role-$role" "{\"role\":\"$role\"}"; done
-for d in task project menu repo jump issues archive confirm-delete settings loose; do
+check pane-header '{"pane":"p1","terminal":"t1"}'
+for d in task project menu repo repo-project project-menu jump issues archive confirm-delete settings loose later; do
   check "dialog-$d" "{\"dialog\":\"$d\",\"overlay\":\"ov\",\"repo\":\"~\"}"
 done
 exit $fail

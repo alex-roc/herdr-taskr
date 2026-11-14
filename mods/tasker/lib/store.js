@@ -65,7 +65,9 @@ export function cleanTask(t) {
 }
 
 export function cleanProject(p) {
-  return { ...p, id: str(p.id) || uid(), name: str(p.name).trim() || "Untitled", color: str(p.color) || "ansi4", repos: list(p.repos).filter((r) => typeof r === "string") };
+  // `paused`: put aside for now; its tasks leave Now (unless an agent needs you or works) and it
+  // waits folded at the end of Projects. A `color` from before stays in the file, unused.
+  return { ...p, id: str(p.id) || uid(), name: str(p.name).trim() || "Untitled", repos: list(p.repos).filter((r) => typeof r === "string"), paused: p.paused === true };
 }
 
 // Every task gets a place: one without (hand-written, an agent's, a file from before ranks)
@@ -297,7 +299,7 @@ export function toTop(data, id) {
 }
 
 export function newProject(data, fields) {
-  const p = { id: uid(), name: "", color: "ansi4", repos: [], collapsed: false, ...fields };
+  const p = { id: uid(), name: "", repos: [], paused: false, ...fields };
   data.projects.push(p);
   return p;
 }

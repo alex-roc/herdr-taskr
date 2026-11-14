@@ -166,6 +166,8 @@ function fakeExec(cmd, args, opts) {
     return ok(JSON.stringify([{ number: 7, title: "Already imported", url: "https://github.com/o/web/issues/7", body: "", labels: [] },
       { number: 8, title: "Crash on start", url: "https://github.com/o/web/issues/8", body: "Steps…", labels: [{ name: "bug" }, { name: "p1" }, { name: "x" }] }]));
   }
+  // The repositories inside a folder (the project form's Add folder).
+  if (cmd === "sh" && args.join(" ").includes('.git" ]')) return ok(args.at(-1) === "/home/me/dev" ? "/home/me/dev/app\n/home/me/dev/web\n" : "");
   if (cmd === "sh" && args.join(" ").includes("grep")) {
     return ok('"model":"claude-opus-5-5"\n"effort":"high"\n"input_tokens":12\n"cache_read_input_tokens":200000\n"cache_creation_input_tokens":3000\n"output_tokens":800\n');
   }

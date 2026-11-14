@@ -1,6 +1,6 @@
 // tasker: a task manager over repos and coding agents.
 // One mod, several roles by props: { role: "sidebar" | "detail" | "status" | "board" },
-// or { dialog: ... } when opened as an overlay. Data: data/tasker/tasks.json.
+// { dialog: ... } when opened as an overlay, or { pane, terminal } as a terminal's header. Data: data/tasker/tasks.json.
 
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -21,11 +21,13 @@ import { Sidebar } from "./sidebar.js";
 import { Detail } from "./detail.js";
 import { Dialogs } from "./dialogs.js";
 import { Board } from "./board.js";
+import { Pane } from "./pane.js";
 
 export default class Tasker extends View {
   init(_props, cx) {
     const p = props() ?? {};
-    this.role = p.dialog ? "dialog" : p.role ?? "sidebar";
+    // A pane header gets Herdr's { pane, terminal } (the layout gives it no props of its own).
+    this.role = p.dialog ? "dialog" : p.role ?? (p.pane ? "pane" : "sidebar");
     this.store = new Store();
     this.store.watch(cx);
     this.repos = new RepoCache();
@@ -42,6 +44,7 @@ export default class Tasker extends View {
     else if (this.role === "detail") this.initDetail(cx);
     else if (this.role === "dialog") this.initDialog(cx);
     else if (this.role === "board") this.initBoard(cx);
+    else if (this.role === "pane") this.initPane(cx);
     else {
       this.usage = new Usage();
       cx.timer.every(60000, (cx) => cx.notify());
@@ -60,7 +63,10 @@ export default class Tasker extends View {
     if (this.role === "sidebar" && this.quiet.length) this.titles.refresh(cx, this.quiet);
     if (this.role === "sidebar") {
       // Repo state of every local space (remote ones stay as folders).
-      const list = this.world.spaces.filter((s) => s.folder && !s.on).map((s) => ({ folder: s.folder, on: null }));
+      // And the folder each task and terminal is in, for the repository a row names.
+      const list = [...this.world.spaces.filter((s) => s.folder && !s.on).map((s) => ({ folder: s.folder, on: null })),
+        ...this.world.tasks.filter((x) => x.open && x.folder && !x.folderOn).map((x) => ({ folder: x.folder, on: null })),
+        ...this.world.untracked.filter((u) => u.folder && !u.where.on).map((u) => ({ folder: u.folder, on: null }))];
       this.repos.refresh(cx, list, window()?.active ? 45000 : 180000);
     }
     // Every agent's model and context: in tasks and in no task alike.
@@ -167,6 +173,7 @@ export default class Tasker extends View {
 
   render(cx) {
     if (this.role === "dialog") return this.renderDialog(cx);
+    if (this.role === "pane") return this.renderPane(cx);
     this.look(cx);
     if (this.role === "sidebar") {
       if (this.store.loaded) this.keepBooks(cx, this.world);
@@ -180,4 +187,4 @@ export default class Tasker extends View {
 
 export const openSettings = () => openDialog("settings");
 
-Object.assign(Tasker.prototype, Sidebar, Detail, Dialogs, Board);
+Object.assign(Tasker.prototype, Sidebar, Detail, Dialogs, Board, Pane);

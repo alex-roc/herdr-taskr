@@ -4,7 +4,7 @@ import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, termi
 import { untrackedName } from "./world.js";
 import { git, place } from "./git.js";
 import { setStatus, newTask } from "./store.js";
-import { untilde, tilde, slug, commonDir } from "./util.js";
+import { untilde, tilde, slug, projectFolder } from "./util.js";
 import { S } from "../strings.js";
 
 // Checkouts go where Herdr's own worktree dialog puts them, so its spaces list nests them.
@@ -51,12 +51,12 @@ export function withDirs(argv, dirs) {
 
 // Where project-wide work runs: the nearest folder holding all its repositories (~/dev),
 // above them as the project is; `others`: repositories outside it, to add (none, usually).
-// A project with no repositories yet works in the home folder.
+// A project with no repositories yet, or none in common, works in the home folder.
 export function projectPlace(project, h = home()) {
   if (!project) return null;
   const repos = (project.repos ?? []).map((r) => untilde(r, h));
   if (!repos.length) return { folder: h, others: [], all: [] };
-  const folder = commonDir(repos) ?? repos[0];
+  const folder = projectFolder(repos, h);
   const inside = (r) => r === folder || r.startsWith(folder + "/");
   return { folder, others: repos.filter((r) => !inside(r)), all: repos };
 }
@@ -276,4 +276,37 @@ export function openUrl(url) {
   const platform = window()?.platform;
   const [cmd, args] = platform === "windows" ? ["cmd", ["/c", "start", "", url]] : platform === "linux" ? ["xdg-open", [url]] : ["open", [url]];
   exec(cmd, args).catch(() => {});
+}
+
+// The repositories right inside a folder (~/dev → ~/dev/a, ~/dev/b): main checkouts, a `.git`
+// folder each; hidden folders left out. Sorted by name.
+export async function reposIn(folder) {
+  try {
+    const r = await exec("sh", ["-c", 'for d in "$1"/*/; do [ -d "$d.git" ] && printf "%s\\n" "${d%/}"; done', "sh", folder.replace(/\/+$/, "")]);
+    return (r.stdout ?? "").split("\n").filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  } catch {
+    return [];
+  }
+}
+
+// Takes a repository out of its project (or every project). Its tasks that only belonged to the
+// project through it stay in the project.
+export function removeRepo(data, repo, h) {
+  const same = (r) => tilde(untilde(r, h), h) === repo;
+  for (const p of data.projects) {
+    if (!(p.repos ?? []).some(same)) continue;
+    p.repos = p.repos.filter((r) => !same(r));
+    for (const t of data.tasks) if (!t.project && t.repo && same(t.repo)) t.project = p.id;
+  }
+}
+
+// Puts a repository (or any folder) in a project (it leaves the one it was in), or in none.
+// Its tasks go with it: those of the project it left, and those in no project.
+export function moveRepo(data, repo, projectId, h) {
+  const same = (r) => tilde(untilde(r, h), h) === repo;
+  const was = data.projects.find((p) => (p.repos ?? []).some(same))?.id ?? null;
+  for (const p of data.projects) p.repos = (p.repos ?? []).filter((r) => !same(r));
+  const p = projectId && data.projects.find((x) => x.id === projectId);
+  if (p) p.repos.push(repo);
+  for (const t of data.tasks) if (t.repo && same(t.repo) && (!t.project || t.project === was)) t.project = p ? p.id : null;
 }

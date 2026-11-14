@@ -65,7 +65,7 @@
                   "size": {
                     "weight": 1
                   },
-                  "min": 90,
+                  "min": 41,
                   "content": {
                     "mod": "tasker",
                     "props": {
@@ -80,7 +80,7 @@
                   "size": {
                     "weight": 1
                   },
-                  "min": 90,
+                  "min": 41,
                   "content": {
                     "mod": "tasker",
                     "props": {
@@ -150,7 +150,7 @@
                   },
                   "header": {
                     "content": {
-                      "mod": "pane"
+                      "mod": "tasker"
                     },
                     "height": 30,
                     "position": "top",

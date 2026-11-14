@@ -22,8 +22,8 @@ every task by status.
     Then **Not in a task** (`dim`): idle agents whose tab belongs to no task; then **Later** (`dim`,
     folded until opened): tasks put off, soonest back first, *someday* last.
     Empty: "Nothing needs you. Press n for a new task, or open Projects to see your repositories."
-  - **Projects**: a project row (9px colored square, name 12px semibold, count of tasks and loose
-    tabs, chevron); under it the tasks without repository, then repository rows (chevron, name,
+  - **Projects**: a project row (`layers` icon 13px, `dim` when paused; name 12px semibold, count of tasks and loose
+    tabs, chevron); under it the tasks without repository, then repository rows (chevron, `folder` icon, name,
     `⎇ branch`, `↑ahead`, `•dirty` in `ansi3`, "not open" when no space is in it, each with a
     tooltip; then `square-terminal` new terminal, `plus` new task, `ellipsis` menu), the
     repository's tasks, and its tabs in no task. Open git repositories and folders in no project go
@@ -31,7 +31,13 @@ every task by status.
     `square-kanban` (its board), `square-terminal` (a terminal for the whole project), `plus` (a task
     for the whole project) and `ellipsis` (its menu). Dragging a project row onto another moves it
     there (dimmed while dragged; a 2px `accent` line above or below the target shows where it lands);
-    the order is `projects` in tasks.json.
+    the order is `projects` in tasks.json. Paused projects (`paused: true`) come last, under a
+    **Paused** section header (`dim`, folded until opened, as Later). No project colors: a `color`
+    from before stays in the file, unused.
+  - **Stacked** (`tasker-split`, Projects over Now, each block `min` 41): each list's header has a
+    chevron by its name; folding sets its block to `px: 41` (its header) and the other to `weight: 1`,
+    unfolding back to `weight: 1` (Herdr then drops the size it kept). Never both folded; a double
+    click on a name folds the other. Which one is folded: `shared("tasker.stackFolded")`.
   - **Order**: every task has a `rank` (lower first); Up next, the Inbox, each project's and
     repository's tasks and every board column follow it (Projects: open tasks first). Dragging a task
     row onto another in the same list (or between Inbox and Up next, which also changes its status)
@@ -79,14 +85,13 @@ every task by status.
   color) and a hint; six columns that share the width (min 210, max 320px) on `chrome`, radius 10,
   header 38px (status icon, name, count; Doing shows n/limit in `ansi3` when over; + on Inbox and
   Next); cards on `background`, radius 9, border `blocked` when the agent needs you, `accent` when
-  selected: mark + title, next step, the question or "model · effort · working 4m", chips (P, due,
-  #issue, branch) and the repository. Empty column: a 56px "Nothing here" box. Done shows the last 7
+  selected: mark + title, next step, the question or "Acme › app · working 4m" (where, as in Now; a
+  project's board leaves the project out), chips (due, #issue, branch) and the project's color. Empty column: a 56px "Nothing here" box. Done shows the last 7
   days. Dragging dims the card and highlights the column under the pointer (`selected` + `accent`
   border); releasing there sets the status. Held over a card, a 3px `accent` line shows where it
   lands (below when it comes from above in the same column); releasing there sets that column's
   status and puts it at that place. When agents in no task exist, a **No task** lane (190–260px,
-  `canvas`, bot icon, a one-line hint) comes first with a card per agent (mark, name, model · effort ·
-  time, repository); dropping one on a column makes it a task with that status, releasing it on its
+  `canvas`, bot icon, a one-line hint) comes first with a card per agent (mark, name, where · time); dropping one on a column makes it a task with that status, releasing it on its
   own lane goes to the agent.
 - **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0), "Doing n/limit" (`ansi3` and "finish
   something first" when over), "! N need(s) you" (click: Now), "N working"; on the right plan usage
@@ -94,10 +99,13 @@ every task by status.
   fuller limit; tooltip with reset times; click looks again; "Claude !" with the reason on error),
   "N open", a `panel-right` button that shows or hides the detail (`foreground` when shown) and a
   settings gear. Plan usage is off until turned on.
-- **Dialogs** (Herdr dialogs, `popover` background): task form 560×660, project 480×500 (repositories
-  to tick, and *Add folder…* with the system's folder picker), settings 480×940, find 520×420, issues
-  540×460, archive 460×230, delete 420×190, close 440×200, later 420×200; menus are popups (task
-  270×410, repository 250×370, project 270×290, loose tab 240×150). Forms scroll and keep their
+- **Dialogs** (Herdr dialogs, `popover` background): task form 560×660 (its project picker leaves
+  paused ones out), project 500×620 (name; State: Active / Paused; the project's repositories only,
+  each with ✕; *Add folder…*: the system's picker, a repository goes in at once, another folder lists
+  the repositories right inside it (a `.git` folder each) to tick, with a filter past 8 and *Add all
+  N*), settings 480×940, find 520×420, issues
+  540×460, archive 460×230, delete 420×190, close 440×200, later 420×240; menus are popups (task
+  270×380, repository 250×370, project 280×380, move a repository 260×320, loose tab 240×150). Forms scroll and keep their
   buttons in a footer with a border.
 - Theme: `themes/tasker.json` for dark (`#1a1d21` background, teal accent `#5fc4b5`, `working`
   `#6fa8e8`, `blocked` `#e5737b`, `done` `#5fc4b5`), Herdr's `paper` for light.
@@ -114,11 +122,18 @@ every task by status.
   (`globalThis`) so two lists on screen record each change once.
 - Clicking a task selects it and focuses its agent's pane (else a terminal of its tabs); Enter does
   the same, and opens the task form when it has neither.
-  Right-click: a task's menu (details, edit, start, start in worktree, status icons, move to the top, Later:
-  Tomorrow / Next week / Someday / Pick…, Bring back, archive, delete in `blocked`); a repository's
+  Right-click: a task's menu (details, edit, start, start in worktree, status icons, move to the top,
+  Later… (a plain item: a dim label beside chips read as disabled), Bring back, archive, delete in
+  `blocked`); the Later dialog: quick buttons Tomorrow / Next week / Someday, then "Or a day" to type; a repository's
   menu (new terminal, "New <agent> here" for each installed agent, close repo, new task, import
-  issues, its project); a project's menu (header: color, name, "2 repositories"; Board, New task…;
-  "Across its repositories, in ~/dev", Terminal and each agent; Edit project…, Close project…).
+  issues; *Move to project…*, a list of every project (paused last) and No project, also done by dragging the
+  repository's row onto a project's header (the row dims, the header gets `selected`; its tasks follow); *Remove from
+  <project>*, `folder-minus`, which keeps its tasks in the project); a project's menu (header: layers
+  icon, name, "2 repositories"; Board, New task…;
+  "Across its repositories, in ~/dev", Terminal and each agent; Edit project…, Pause project / Make active, Close project…).
+- A row's place: the task's repository, else the repository its terminal is in now (a task of a
+  project's own space, its agent in `~/dev/x`), else that folder, `~`-shortened. The sidebar looks
+  up those folders with the spaces' (RepoCache, shared).
 - Later: `snooze` is `YYYY-MM-DD` (a day after today) or `someday`. A task put off leaves every Now section but Needs you
   and Working, and waits in Later; on its day it comes back (snooze cleared) with a notification.
   Doing, done and dropped clear it.
@@ -127,7 +142,8 @@ every task by status.
   (or `tasker.focus`).
 - A task for the whole project (a project, no repository) and a project's own terminals and agents
   run in the project's own space (named after it) in the nearest folder holding all its repositories
-  (a lone repository's parent; the home folder for a project with none), with `--add-dir` for any
+  (a lone repository's parent; the home folder for a project with none, or whose repositories share
+  nothing below it), with `--add-dir` for any
   repository outside it (Claude Code and Codex);
   the first message names every repository of the project. Their terminals are labelled
   `tasker.project=<id>` and their tabs show at the project's level, above its repositories, never
@@ -184,7 +200,10 @@ notifications ask for it). With two lists on screen, Now acts on them and sets a
 - Layout: Herdr's `main` with `sidebar-lists` replaced by the stack `tasker-lists` (a block `{mod:
   "tasker", props: {role: "sidebar"}}`, and the `tasker-split` column of two lists), a hidden column `tasker-detail` (`role: "detail"`) appended to `work-body`, and the
   status block given `role: "status"`; root `"preview": "layouts/tasker.svg"`. Kept:
-  `workspace-chrome`, `tabs`, `pane` (header), `files`, `changes`.
+  `workspace-chrome`, `tabs`, `files`, `changes`. The pane header is tasker too (`{mod: "tasker"}`,
+  no props: Herdr hands it `{pane, terminal}`): program icon, the task's title (else the program),
+  model · effort · ctx in `muted`, the folder in `dim`, the agent mark; split right/down, zoom and
+  close (Lucide columns-2, rows-2, maximize-2/minimize-2, x) while hovered.
 - One mod, `tasker`, roles by props; dialogs are the same mod as overlays with `{dialog: "task" |
   "project" | "menu" | "repo" | "project-menu" | "jump" | "issues" | "archive" | "confirm-delete" |
   "confirm-close" | "later" | "settings"}`,

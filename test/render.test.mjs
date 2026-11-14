@@ -93,7 +93,7 @@ test("sidebar: the key commands", async () => {
   for (const c2 of ["board", "jump", "view", "new", "focus"]) view.command(c2, cx());
 });
 
-for (const dialog of ["task", "project", "menu", "repo", "jump", "issues", "archive", "settings", "confirm-delete", "loose", "project-menu", "confirm-close", "later"]) {
+for (const dialog of ["task", "project", "menu", "repo", "repo-project", "jump", "issues", "archive", "settings", "confirm-delete", "loose", "project-menu", "confirm-close", "later"]) {
   for (const extra of [{}, { task: "blocked1", project: "pa", repo: "~/dev/app", tab: "tb4", repos: ["~/dev/app"], name: "App" }, { task: "review1", project: "pw", repo: "~/dev/web", tab: "tb3", attach: "tb4" }]) {
     test(`dialog ${dialog} ${JSON.stringify(extra)}`, async () => {
       const { view, c } = await mount({ dialog, overlay: "ov1", ...extra });
@@ -150,14 +150,66 @@ test("sidebar: clicking a task shows it and brings its agent's tab to the front"
   assert.ok(!H.runs.some(([n]) => n === "pane.focus"), "a task with no tab only shows");
 });
 
-test("project form: a folder from the picker is added, ticked", async () => {
+test("project form: a repository from the picker goes in at once; a folder lists those inside it", async () => {
   const { view } = await mount({ dialog: "project", overlay: "ov1" });
-  H.picked = `${H.home}/notes`;
-  walk(render(view).tree).find((n) => n.id === "add-folder").handlers.on_click({}, cx());
-  await settle();
-  assert.ok(view.form.repos.includes("~/notes"));
-  assert.ok(walk(render(view).tree).some((n) => n.id === "r-~/notes"));
+  const add = async () => { walk(render(view).tree).find((n) => n.id === "add-folder").handlers.on_click({}, cx()); await settle(25); };
+  H.picked = "/home/me/dev/web";
+  await add();
+  assert.deepEqual(view.form.repos, ["~/dev/web"]);
+  assert.ok(walk(render(view).tree).some((n) => n.id === "r-~/dev/web"), "listed with its ✕");
+  // ~/dev isn't a repository: its repositories are listed to tick.
+  H.picked = "/home/me/dev";
+  await add();
+  assert.deepEqual(view.found.repos, ["~/dev/app", "~/dev/web"]);
+  walk(render(view).tree).find((n) => n.id === "f-~/dev/app").handlers.on_click({}, cx());
+  assert.deepEqual(view.form.repos, ["~/dev/web", "~/dev/app"]);
+  // ✕ takes one out.
+  walk(render(view).tree).find((n) => n.id === "rx-~/dev/web").handlers.on_click({}, cx());
+  assert.deepEqual(view.form.repos, ["~/dev/app"]);
+  // Nothing else is listed: not the repositories tasker knows, not the open spaces.
+  assert.ok(!walk(render(view).tree).some((n) => n.id === "r-/srv/api"));
   delete H.picked;
+});
+
+test("project form: paused is saved", async () => {
+  const { view } = await mount({ dialog: "project", overlay: "ov1", project: "pa" });
+  walk(render(view).tree).find((n) => n.id === "pst-paused").handlers.on_click({}, cx());
+  walk(render(view).tree).find((n) => n.id === "save").handlers.on_click({}, cx());
+  await settle();
+  assert.equal(JSON.parse(H.files.get(FILE())).projects.find((p) => p.id === "pa").paused, true);
+});
+
+test("repository menu: remove it from its project, or move it from a list", async () => {
+  const { view } = await mount({ dialog: "repo", overlay: "ov1", repo: "~/dev/app", project: "pa" });
+  await settle();
+  walk(render(view).tree).find((n) => n.id === "r-remove").handlers.on_click({}, cx());
+  await settle();
+  const d = JSON.parse(H.files.get(FILE()));
+  assert.ok(!d.projects.find((p) => p.id === "pa").repos.some((r) => r.endsWith("dev/app")));
+  assert.ok(d.tasks.filter((x) => x.repo === "~/dev/app").every((x) => x.project), "its tasks keep a project");
+  const m = await mount({ dialog: "repo-project", overlay: "ov2", repo: "~/dev/app" });
+  walk(render(m.view).tree).find((n) => n.id === "rp-pw").handlers.on_click({}, cx());
+  await settle();
+  const d2 = JSON.parse(H.files.get(FILE()));
+  assert.ok(d2.projects.find((p) => p.id === "pw").repos.includes("~/dev/app"));
+  assert.ok(d2.tasks.filter((x) => x.repo === "~/dev/app" && !x.deleted).every((x) => x.project === "pw"), "its tasks go with it");
+});
+
+test("a repository dragged onto another project's header moves there", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["tasker.view"] = "projects";
+  await settle();
+  const nodes = walk(render(view).tree);
+  const row = nodes.find((n) => n.id === "r:pa:~/dev/app");
+  assert.ok(row, "the repository's row");
+  row.handlers["on_mouse_down:left"]({}, cx());
+  const header = walk(render(view).tree).find((n) => n.id === "p:pw");
+  header.handlers.on_mouse_move({}, cx());
+  header.handlers["on_mouse_up:left"]({}, cx());
+  await settle();
+  const d = JSON.parse(H.files.get(FILE()));
+  assert.ok(d.projects.find((p) => p.id === "pw").repos.includes("~/dev/app"));
+  assert.ok(!d.projects.find((p) => p.id === "pa").repos.includes("~/dev/app"));
 });
 
 test("close a project: one question, then every space of its repos closes", async () => {
@@ -348,4 +400,51 @@ test("store reloads when the file changes on disk", async () => {
   touch(FILE());
   await settle();
   assert.ok(view.store.task("fromagent"));
+});
+
+test("pane header: a terminal says its task, its agent's model and context; its buttons work", async () => {
+  const { view } = await mount({ pane: "p1", terminal: "t1" });
+  assert.equal(view.role, "pane");
+  render(view); // asks for its agent's model and context
+  await settle(50);
+  const words = text(render(view).tree);
+  assert.match(words, /Add login/, "the task its terminal is labelled with");
+  assert.match(words, /opus 5\.5|ctx/i, "its agent's model and context");
+  view.hovered = true;
+  const fired = await fireAll(view);
+  assert.ok(fired.some((f) => f.startsWith("ph-z-p1")), "zoom, split and close while hovered");
+  // A shell in no task: its program, no task.
+  const plain = await mount({ pane: "p3", terminal: "t3" });
+  assert.doesNotMatch(text(render(plain.view).tree), /Add login|Pick a database|ctx/);
+});
+
+test("menu: Later is a plain item that opens its dialog; the dialog's quick choices put the task off", async () => {
+  const { view } = await mount({ dialog: "menu", overlay: "ov1", task: "next1" });
+  H.overlays.length = 0;
+  walk(render(view).tree).find((n) => n.id === "later").handlers.on_click({}, cx());
+  assert.deepEqual(H.overlays.map((o) => o.props.dialog), ["later"]);
+  const d = await mount({ dialog: "later", overlay: "ov2", task: "next1" });
+  walk(render(d.view).tree).find((n) => n.id === "later-someday").handlers.on_click({}, cx());
+  await settle();
+  assert.equal(JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "next1").snooze, "someday");
+});
+
+test("Now: a row's second line says where it is and how long, not the model", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["tasker.view"] = "now";
+  await settle(25);
+  const tree = walk(render(view).tree);
+  const row = (id) => tree.find((n) => n.id === id).children.map(text).join(" ");
+  assert.match(row("t-blocked1"), /Use Postgres or SQLite/, "a question first");
+  assert.match(row("t-doing1"), /App › app/i);
+  assert.doesNotMatch(row("t-doing1"), /ctx|opus/i);
+});
+
+test("board: a card says where it is and how long, not the model", async () => {
+  const { view } = await mount({ role: "board" });
+  await settle(25);
+  const tree = walk(render(view).tree);
+  const card = tree.find((n) => n.id === "card-review1").children.map(text).join(" ");
+  assert.match(card, /app/);
+  assert.doesNotMatch(card, /opus|ctx|high/i);
 });

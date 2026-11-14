@@ -19,11 +19,13 @@ layouts/tasker.json   Herdr's main layout with the task list, the detail column 
 layouts/tasker.svg    the picture Settings shows for the layout
 themes/tasker.json    the dark theme (light uses Herdr's paper)
 mods/tasker/
-  main.js             one mod, several roles by props: sidebar | detail | status | board | dialog
+  main.js             one mod, several roles by props: sidebar | detail | status | board | dialog,
+                      and pane (a terminal's header: Herdr's own { pane, terminal })
   sidebar.js          Now and Projects, and the bookkeeping (ties new tabs to tasks, moves tasks
                       as their agents work, adds up agent time); only the sidebar copy does it
   detail.js           the task panel; looks up screen, diff and PR only while shown
   board.js            the kanban tab
+  pane.js             each terminal's header: its task, its agent's model and context
   dialogs.js          task and project forms, menus, find, issues, archive, delete, settings
   strings.js          every word the person reads (translate this file to localize)
   lib/store.js        tasks.json: read, cleaned, compare-and-swap writes, file watch
@@ -107,7 +109,24 @@ task, so they're neither tracked as light tasks nor drawn; its agents' addresses
   calls `cx.stop_propagation()` so its container's own `on_mouse_up` (a board column's drop, the
   list's "drag is off") doesn't run too; a card's `on_mouse_move` stops it as well, or the column
   under it would take the target back.
+- One handler per event on an element: when one element takes two kinds of drag (a project
+  header: projects to reorder, repositories to move in), branch inside a single `on_mouse_move`
+  and `on_mouse_up`. The test stub keeps only the last handler of each kind.
+- A new tab can show up in `spaces()` a look before its terminal is in `terminals()`. Labelling
+  its terminals (`tasker.project`) then finds none and the label is lost: keep the pending launch
+  (with its tab) until the terminal is there. `space.new` and `tab.new` take no labels.
+- Herdr keeps terminals alive when the app quits or updates (herdr-core holds them), but after a
+  reboot or a core crash a terminal comes back as a bare shell: its program is never run again.
+  So agents back after a restart are tasker's doing (`lib/revive.js` types `claude --resume <id>`),
+  not Herdr's; checked with Herdr 0.1.15 / hc 0.1.21. Before removing it, look at the shell's
+  children (`ps`): a `claude --resume` started a few seconds after the shell is revive.
 - Herdr doesn't hot-reload a mod folder that is a symlink: install by copying.
+- A pane header is a mod Herdr draws once per pane with `props()` = `{pane, terminal}`: the layout
+  names it with no props of its own (`{"mod": "tasker"}`), and `main.js` takes `pane` for that role.
+- `layout.resize {id, px}` sizes a block and Herdr keeps it in `layouts/.state/<layout>.json`;
+  `{id, weight}` with the file's own weight drops what it kept. Folding a stacked list is that.
+- In a menu, a dim label beside small choices reads as a disabled item: people click the label. Make
+  every action a plain item, and put its choices in the dialog it opens (Later went this way).
 - `child(null)` throws in gpui-kit, and so does using an element twice. `false` is fine.
 - Every copy of the mod (sidebar, detail, status bar, board, each dialog) runs its own `init` and
   `render`, but they share `globalThis`: caches of agent info, repository state and "since when"

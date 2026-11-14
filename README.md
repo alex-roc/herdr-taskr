@@ -40,11 +40,16 @@ What makes it different:
 |---|---|
 | **Needs you** | Tasks whose agent is blocked, with the agent's question right in the row |
 | **To review** | Tasks in Review, and tasks in Doing whose agent finished |
-| **Working** | Tasks with an agent at work: model · effort · context size · how long |
+| **Working** | Tasks with an agent at work |
 | **Up next** | Next, Doing and Waiting tasks, in the order you set: drag a row onto another |
 | **Stalled** | Doing or Waiting tasks that haven't moved in a few days |
 | **Inbox** | Ideas and imported issues, not yet planned |
 | **Later** | Tasks you put off, folded: each comes back on its day (or *someday*: when you bring it back) |
+
+Under each row, and on each board card: where it is and how long its agent has been as it is
+(`Acme › api · working 14m`). Where is the task's repository, else the one its terminal is in now,
+else that folder (`General › ~` for a project's own space). An agent's question takes that line
+when it needs you. Its model, effort and context are in the terminal's header and the detail.
 
 Which status when: **Next** you'll do it, **Waiting** it depends on someone else, **Inbox** not decided,
 **Dropped** you won't.
@@ -53,8 +58,8 @@ Which status when: **Next** you'll do it, **Waiting** it depends on someone else
 in Projects, and it takes that place (a line shows where it lands); drag an idea from the Inbox onto
 Up next and it's planned. `t`, or *Move to the top* in its menu, puts it first. New tasks go last.
 
-To put one off without changing what it is, use **Later** (right-click, `z`, or
-the detail): tomorrow, next week, a day you type (`fri`, `+3d`, `12-24`) or *someday*. On its day it
+To put one off without changing what it is, use **Later** (right-click → *Later…*, `z`, or
+the detail): tomorrow, next week or *someday* at a click, or a day you type (`fri`, `+3d`, `12-24`) or *someday*. On its day it
 comes back with a notification. Once a day, a notification also tells you what's due or late
 (*Reminders* in the settings turns both off).
 
@@ -75,17 +80,24 @@ tracked again by itself.
 **Projects**: an outline of projects → repositories → tasks. Each repository shows its branch,
 commits not pushed (↑) and uncommitted changes (•), and the terminals open there that belong to no
 task. From a repository: `›_` opens a terminal there, `+` a task, and `⋯` (or right-click) starts any
-installed agent there, imports GitHub or Linear issues, moves it to another project, or closes its
-spaces. A project's row shows its actions while the pointer is on it: its board, a terminal and a task
+installed agent there, imports GitHub or Linear issues, moves it to another project, removes it from
+its project, or closes its spaces. A repository in a project is only a pointer: no terminal and no
+task until you start something there. A project's row shows its actions while the pointer is on it: its board, a terminal and a task
 for the whole project, and `⋯` (or right-click), its menu: board and new task; a terminal or any
-installed agent across its repositories; edit it, or close all its spaces. Work for the whole project
+installed agent across its repositories; edit it, pause it, or close all its spaces. A **paused**
+project waits folded under *Paused* at the end of Projects, and its tasks leave Now and the board of
+every project, but for an agent that needs you or is working; *Make active* brings it back. Work for the whole project
 (its terminal, its agents, a task with a project but no repository) opens in the project's own space,
 named after it, in the nearest folder holding all its repositories (`~/dev` for `~/dev/a` and
-`~/dev/b`; your home folder while it has none), and shows at the project's level, above its
+`~/dev/b`; your home folder while it has none, or when they share nothing below it), and shows at the project's level, above its
 repositories. Drag a project's row onto another to reorder them. Its agent is told which
 repositories are the project's (any outside that folder is added with `--add-dir`, Claude Code and
 Codex); a task in one repository of a bigger project hears of the others. Terminals and agents in no task show the same line as a task:
-model, effort, context and how long in their state.
+where they are and how long in their state.
+
+**Each terminal's header** says what it's for: its task's title (else its program), the agent's
+model · effort · context, its folder and state; split, zoom and close while the pointer is on it.
+Click it to select its task.
 
 **Board**: a kanban tab (`cmd-shift-b`, or the board button in Now) with Inbox, Next, Doing (with your
 limit), Waiting, Review and Done (last 7 days). Drag a card to another column to change its status, or onto another card to put it there; click to open it,
@@ -150,9 +162,10 @@ Your other layouts are untouched; switch back the same way.
 
 ## Use it
 
-1. **Add a project.** In Projects, the folder button makes one; tick the repositories that belong
-   to it (any repository open in Herdr is offered), or *Add folder…* for one that isn't open. Or
-   right-click a repository → Project.
+1. **Add a project.** In Projects, the folder button makes one. *Add folder…* takes a repository at
+   once; pick a folder that holds several (`~/dev`) and its repositories are listed to tick, with a
+   filter and *Add all*. Or drag a repository (or a folder) onto a project's header, or right-click it →
+   *Move to project…*; its tasks go with it.
 2. **Add tasks.** `n`, the `+` button, `+` on a repository, or *Import GitHub issues* / *Import
    Linear issues* from a repository's menu. A due date takes `today`, `tomorrow`, `fri`, `+3d`, `2w`,
    `12-24` or `2026-12-24`.
@@ -168,7 +181,8 @@ Settings (the gear in the status bar): Now and Projects as tabs or **stacked** (
 above the other, as Herdr's spaces and agents), how many tasks can be in Doing before the status bar
 warns you, after how many days a task counts as stalled, which agent *Start agent* runs, whether
 the detail lists every status change (*Activity*, off by default) and whether the status bar shows
-plan usage. Stacked, `tab` moves the keys between the two lists.
+plan usage. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
+it to its header (the other takes the room), and a double click on the name gives it all the room.
 
 **After a restart**: Herdr brings every terminal back, as a shell in its last folder. tasker
 remembers which Claude Code or Codex conversation each one had (`data/tasker/terminals.json`), and
@@ -213,7 +227,7 @@ file it can't read (it shows what's wrong instead). It never goes in this reposi
 ```jsonc
 {
   "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false },   // agent: a key from Herdr's agent menu
-  "projects": [{ "id": "p1", "name": "Acme", "color": "ansi4", "repos": ["~/dev/acme"] }],
+  "projects": [{ "id": "p1", "name": "Acme", "repos": ["~/dev/acme"], "paused": false }],
   "tasks": [{
     "id": "t1", "title": "Add OAuth login", "project": "p1", "repo": "~/dev/acme",
     "status": "next",            // inbox | next | doing | waiting | review | done | dropped

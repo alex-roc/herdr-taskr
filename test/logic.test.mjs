@@ -8,7 +8,7 @@ import { H, command } from "herdr";
 import { parseDue, dueLabel, slug, shortModel, byRank, reorder, duration, parseLater } from "../mods/tasker/lib/util.js";
 import { parse, cleanTask, Store, setStatus, moveTask, toTop, newTask } from "../mods/tasker/lib/store.js";
 import { build, nowView, projectTree } from "../mods/tasker/lib/world.js";
-import { arrived, launch, openInProject } from "../mods/tasker/lib/actions.js";
+import { arrived, launch, openInProject, moveRepo } from "../mods/tasker/lib/actions.js";
 import { AgentInfo } from "../mods/tasker/lib/agentinfo.js";
 import { RepoCache } from "../mods/tasker/lib/git.js";
 import { parseClaude, parseCodex, Usage } from "../mods/tasker/lib/usage.js";
@@ -280,6 +280,51 @@ test("a project's terminal: its own space above the repositories, shown at the p
   assert.deepEqual(web.untracked.map((u) => u.tab), ["tb9"], "at the project's level");
   assert.ok(![...web.repos.values()].some((r) => r.untracked.some((u) => u.tab === "tb9")));
   assert.ok(!tree.orphan.repos.has("~/dev"), "not a folder under No project");
+});
+
+test("a project's space whose label never came: known by its name, in a folder that's no repository", async () => {
+  world();
+  const s = new Store();
+  await s.load();
+  // Opened at ~ (before the project had repositories); its terminal has no tasker.project.
+  H.spaces.push({ id: "sp9", index: 9, name: "Website", named: true, folder: H.home, machine: null, branch: null, active: false, status: null,
+    tabs: [{ id: "tb9", index: 1, name: "1", named: false, active: true, status: null, panes: 1 }] });
+  H.panes.push({ pane: "p9", tab: "tb9", terminal: "t9z", title: "t9z", cwd: H.home, branch: null, status: null, app: null,
+    program: { key: "shell", name: "zsh", shell: true, agent: false }, focused: false, zoomed: false, movable: true });
+  H.terminals.push({ address: "t9z", state: "live", labels: { "herdr.space": "sp9", "herdr.tab": "tb9" }, foreground: { pid: 99, argv: ["zsh"], cwd: H.home } });
+  const w = build({ data: s.data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
+  const tree = projectTree(w, s.data, H.home, { done: false });
+  assert.deepEqual(tree.projects.find((x) => x.p.id === "pw").untracked.map((u) => u.tab), ["tb9"]);
+  assert.ok(![...tree.orphan.repos.values()].some((r) => r.untracked.some((u) => u.tab === "tb9")), "not under No project");
+});
+
+test("moving a repository takes its tasks along, from the project it left or none", () => {
+  const data = { projects: [{ id: "a", name: "A", repos: ["~/dev/x"] }, { id: "b", name: "B", repos: [] }],
+    tasks: [{ id: "1", repo: "~/dev/x", project: "a" }, { id: "2", repo: "~/dev/x", project: null }, { id: "3", repo: "~/dev/x", project: "c" }, { id: "4", repo: "~/dev/y", project: "a" }] };
+  moveRepo(data, "~/dev/x", "b", "/home/me");
+  assert.deepEqual(data.projects.map((p) => p.repos), [[], ["~/dev/x"]]);
+  assert.deepEqual(data.tasks.map((t) => t.project), ["b", "b", "c", "a"]);
+});
+
+test("a project's new tab waits for its terminal before labelling it", async () => {
+  world();
+  const s = new Store();
+  await s.load();
+  openInProject(s.project("pw"));
+  const before = H.shared["tasker.pending"].at(-1);
+  // The tab is there, its terminal not yet.
+  H.spaces.push({ id: "sp9", index: 9, name: "Website", named: true, folder: "/home/me/dev", machine: null, branch: null, active: false, status: null,
+    tabs: [{ id: "tb9", index: 1, name: "1", named: false, active: true, status: null, panes: 1 }] });
+  const { Sidebar } = await import("../mods/tasker/sidebar.js");
+  const host = Object.assign(Object.create(Sidebar), { store: s });
+  const w = build({ data: s.data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
+  const spawned = [];
+  const c = { spawn: (f) => spawned.push(f), notify() {} };
+  // Only the pending launches matter here; the rest of the bookkeeping needs a mounted copy.
+  try { host.keepBooks(c, w); } catch {}
+  const p = H.shared["tasker.pending"].find((x) => x.at === before.at);
+  assert.equal(p?.tab, "tb9", "kept, with its tab");
+  assert.equal(spawned.length, 0, "nothing labelled yet");
 });
 
 test("resume a task of the whole project: the other repositories are added again", async () => {
@@ -934,4 +979,59 @@ test("Linear: no key says how to add one; with a key, assigned issues import wit
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("a project's own folder: the one holding its repositories, else home", async () => {
+  const { projectFolder } = await import("../mods/tasker/lib/util.js");
+  const h = "/Users/me";
+  assert.equal(projectFolder([], h), h, "no repositories yet");
+  assert.equal(projectFolder(["/Users/me/dev/a", "/Users/me/dev/b"], h), "/Users/me/dev");
+  assert.equal(projectFolder(["/Users/me/dev/a"], h), "/Users/me/dev", "a lone repository's parent");
+  assert.equal(projectFolder(["/Users/me/a", "/Volumes/x/b"], h), h, "nothing in common");
+  assert.equal(projectFolder(["/Users/me/a", "/Users/other/b"], h), h, "only a folder above home in common");
+});
+
+test("where a row is: project › repository, else the folder its terminal is in", async () => {
+  const { whereLabel, taskWhere } = await import("../mods/tasker/lib/world.js");
+  const h = "/Users/me";
+  const data = { projects: [{ id: "g", name: "General", repos: [] }, { id: "a", name: "Acme", repos: ["~/dev/api"] }] };
+  assert.equal(whereLabel(data, { project: "a", repo: "~/dev/api" }, h), "Acme › api");
+  assert.equal(whereLabel(data, { project: "g", folder: h }, h), "General › ~", "a project's own space says its folder");
+  assert.equal(whereLabel(data, { folder: "/Users/me/notes" }, h), "~/notes");
+  // A task of a project with no repositories, its terminal in one: that repository.
+  const x = { t: { repo: null }, project: "g", folder: "/Users/me/dev/ai-editor", repoHere: "/Users/me/dev/ai-editor" };
+  assert.equal(taskWhere(data, x, h), "General › ai-editor");
+  assert.equal(taskWhere(data, { ...x, repoHere: null }, h), "General › ~/dev/ai-editor", "not a repository (or not looked yet): the folder");
+  assert.equal(taskWhere(data, x, h, { project: false }), "ai-editor", "a project's board leaves its name out");
+});
+
+test("a paused project: out of Now and Projects' list, but for an agent that needs you or works", () => {
+  const w0 = world();
+  const d = parse(H.files.get(FILE()));
+  d.projects.find((p) => p.id === "pa").paused = true;
+  const w = build({ data: d, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
+  const v = nowView(w, d);
+  const all = [...v.review, ...v.stalled, ...v.next, ...v.inbox, ...v.later];
+  assert.ok(!all.some((x) => x.project === "pa"), "its waiting work leaves Now");
+  assert.ok(v.needs.some((x) => x.t.id === "blocked1"), "an agent asking still shows");
+  const tree = projectTree(w, d, H.home, { done: false });
+  assert.ok(!tree.projects.some((x) => x.p.id === "pa") && tree.paused.some((x) => x.p.id === "pa"));
+  void w0;
+});
+
+test("sidebar: stacked lists fold to their header, never both", async () => {
+  world();
+  H.props = { role: "sidebar", view: "projects" };
+  const view = new Tasker();
+  view.init(H.props, cx());
+  await until(() => view.store.loaded);
+  H.runs.length = 0;
+  view.stackFold("projects", true);
+  assert.deepEqual(H.runs, [["layout.resize", { id: "tasker-projects", px: 41 }], ["layout.resize", { id: "tasker-now", weight: 1 }]]);
+  assert.equal(H.shared["tasker.stackFolded"], "projects");
+  assert.ok(!walk(view.render(cx())).some((n) => n.id === "tasker-list"), "only its header");
+  H.runs.length = 0;
+  view.stackFocus("projects"); // all the room to Projects: it unfolds, Now folds
+  assert.equal(H.shared["tasker.stackFolded"], "now");
+  assert.deepEqual(H.runs.at(-2), ["layout.resize", { id: "tasker-now", px: 41 }]);
 });

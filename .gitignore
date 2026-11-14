@@ -4,3 +4,4 @@ node_modules/
 **/jsconfig.json
 **/*.d.ts
 .playwright-mcp/
+pnpm-lock.yaml

@@ -15,8 +15,8 @@ import { STATUS_ICON, button, chip, statusIcon, statusColor, icon } from "./lib/
 import { openDialog } from "./lib/open.js";
 import * as act from "./lib/actions.js";
 
-const COLORS = { ansi4: "#5b8def", ansi6: "#22a99a", ansi2: "#3fae6a", ansi3: "#e3814f", ansi5: "#8b7cf6", ansi1: "#d9649a" };
-export const projectColor = (p) => COLORS[p?.color] ?? COLORS.ansi4;
+// The quick choices of Later, by the word each one is (as typed in its box).
+const LATER_QUICK = [["tomorrow", "laterTomorrow"], ["mon", "laterNextWeek"], ["someday", "laterSomeday"]];
 
 const close = () => closeOverlay(props().overlay);
 
@@ -96,6 +96,7 @@ export const Dialogs = {
       menu: () => this.menu(t, p),
       repo: () => this.repoMenu(t, p),
       "project-menu": () => this.projectMenu(t, p),
+      "repo-project": () => this.repoProject(t, p),
       later: () => this.laterForm(t, cx),
       jump: () => this.jump(t, cx),
       issues: () => this.issuesList(t, cx),
@@ -183,7 +184,7 @@ export const Dialogs = {
     return this.withFooter(t, v_flex().gap(12)
       .child(this.title(t, this.isNew ? S.newTaskTitle : S.editTask))
       .child(field(t, S.title, input(t, this.inputs.title, this.focusedField === "title")))
-      .child(field(t, S.project, segmented(t, "proj", [[null, S.none], ...projects.map((p) => [p.id, p.name, projectColor(p)])], f.project, (v) => { f.project = v; })))
+      .child(field(t, S.project, segmented(t, "proj", [[null, S.none], ...projects.filter((p) => !p.paused || p.id === f.project).map((p) => [p.id, p.name])], f.project, (v) => { f.project = v; })))
       .child(field(t, S.repo, segmented(t, "repo", [[null, S.none], ...repos.map((r) => [r, base(r)])], f.repo, (v) => { f.repo = v; })))
       .child(field(t, S.status, segmented(t, "st", STATUSES.map((s) => [s, S.statusLabel[s], statusColor(t, s), STATUS_ICON[s]]), f.status, (v) => { f.status = v; })))
       .child(h_flex().gap(12)
@@ -201,21 +202,26 @@ export const Dialogs = {
       .child(h_flex().flex_none().px(18).py(12).gap(8).border_t(1).border_color(t.border).children(left).child(div().flex_1()).children(buttons));
   },
 
-  // ── Project form ───────────────────────────────────────────────────────
+  // ── Project form: its name, active or paused, and its repositories ────
+  // Only the project's own repositories show; *Add folder…* takes a repository at once, or lists
+  // the repositories inside a folder (~/dev) to tick several, with a filter.
   initProjectForm(cx, p) {
     const existing = p.project ? this.store.project(p.project) : null;
-    this.form = existing ? { ...existing, repos: [...(existing.repos ?? [])] } : { name: "", color: "ansi4", repos: p.repo ? [p.repo] : [] };
+    this.form = existing ? { name: existing.name, paused: existing.paused === true, repos: [...(existing.repos ?? [])] }
+      : { name: "", paused: false, repos: p.repo ? [p.repo] : [] };
     this.isNew = !existing;
     this.saving = false;
+    this.found = null; // { folder, repos: [~paths] | null while looking }
+    this.foundFilter = "";
     this.nameInput = InputState.new({ value: this.form.name, placeholder: S.namePlaceholder });
     this.nameInput.on("change", (_e, cx) => { this.form.name = this.nameInput.value(); cx.notify(); });
     this.nameInput.on("submit", (_e, cx) => this.saveProject(cx));
     this.nameInput.focus();
-    this.repoList = null;
+    this.filterInput = InputState.new({ placeholder: S.filterRepos });
+    this.filterInput.on("change", (_e, cx) => { this.foundFilter = this.filterInput.value(); cx.notify(); });
     cx.spawn(async (cx) => {
       await this.store.load();
       if (p.project && this.isNew && this.store.project(p.project)) { this.initProjectForm(cx, p); return; }
-      this.repoList = await repoChoices(this.store);
       cx.notify();
     });
   },
@@ -231,10 +237,11 @@ export const Dialogs = {
         ok = await this.store.update((d) => {
           // A repo belongs to one project.
           for (const p of d.projects) if (p.id !== id) p.repos = (p.repos ?? []).filter((r) => !f.repos.includes(r));
-          if (!id) { newProject(d, { name: f.name.trim(), color: f.color, repos: f.repos }); return; }
+          const fields = { name: f.name.trim(), paused: f.paused, repos: f.repos };
+          if (!id) { newProject(d, fields); return; }
           const p = d.projects.find((x) => x.id === id);
           if (!p) return false;
-          Object.assign(p, { name: f.name.trim(), color: f.color, repos: f.repos });
+          Object.assign(p, fields);
         });
       } finally {
         this.saving = false;
@@ -243,8 +250,8 @@ export const Dialogs = {
     });
   },
 
-  // A folder from the system's picker: its repository (the main checkout, as a worktree
-  // belongs to its repo), else the folder itself. Added ticked.
+  // A folder from the system's picker: a repository goes in at once (its main checkout, as a
+  // worktree belongs to its repo); any other folder lists the repositories in it to tick.
   addFolder(cx) {
     cx.spawn(async (cx) => {
       let folder = null;
@@ -252,36 +259,65 @@ export const Dialogs = {
       if (!folder) return;
       const h = home();
       const st = await repoState(folder, null).catch(() => null);
-      const key = tilde(st?.main ?? folder, h);
-      const f = this.form;
-      if (!f.repos.includes(key)) f.repos = [...f.repos, key];
+      if (st) {
+        const key = tilde(st.main, h);
+        if (!this.form.repos.includes(key)) this.form.repos = [...this.form.repos, key];
+        this.found = null;
+        cx.notify();
+        return;
+      }
+      this.found = { folder: tilde(folder, h), repos: null };
+      this.foundFilter = "";
+      this.filterInput.set_value("");
       cx.notify();
+      const repos = await act.reposIn(folder);
+      if (this.found?.folder === tilde(folder, h)) { this.found.repos = repos.map((r) => tilde(r, h)); cx.notify(); }
     });
   },
 
   projectForm(t, cx) {
     const f = this.form;
-    const all = [...new Set([...f.repos, ...(this.repoList ?? [])])];
     const owner = new Map();
     for (const p of this.store.data.projects) for (const r of p.repos ?? []) owner.set(r, p);
+    const toggle = (r) => (_e, cx) => { f.repos = f.repos.includes(r) ? f.repos.filter((x) => x !== r) : [...f.repos, r]; cx.notify(); };
+    const elsewhere = (r) => { const o = owner.get(r); return o && o.id !== props().project ? o : null; };
+    // The project's repositories, each with ✕.
+    const mine = f.repos.map((r) => h_flex().id(`r-${r}`).h(26).px(6).gap(8).rounded(6).items_center().hover((s) => s.bg(t.hover))
+      .child(icon("folder", 13, t.muted)).child(div().flex_1().min_w(0).truncate().child(r))
+      .child(div().id(`rx-${r}`).p(3).rounded(4).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip(S.removeRepo).on_click(toggle(r)).child(icon("x", 12))));
+    // What a picked folder holds.
+    const fd = this.found;
+    const q = this.foundFilter.trim().toLowerCase();
+    const shown = (fd?.repos ?? []).filter((r) => !q || r.toLowerCase().includes(q));
+    const notYet = shown.filter((r) => !f.repos.includes(r));
+    const found = !fd ? null : v_flex().gap(6).pt(4)
+      .child(h_flex().gap(8).items_center()
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(fd.repos == null ? S.lookingIn(fd.folder) : S.reposIn(fd.repos.length, fd.folder)))
+        .when(notYet.length > 1, (el) => el.child(button(t, "found-all", S.addAll(notYet.length), (_e, cx) => { f.repos = [...f.repos, ...notYet]; cx.notify(); }, { small: true })))
+        .child(div().id("found-x").p(3).rounded(4).cursor_pointer().text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.foreground))
+          .tooltip(S.closeList).on_click((_e, cx) => { this.found = null; cx.notify(); }).child(icon("x", 12))))
+      .when((fd.repos?.length ?? 0) > 8, (el) => el.child(input(t, this.filterInput, false)))
+      .when(fd.repos != null && !fd.repos.length, (el) => el.child(div().text_size(11.5).text_color(t.dim).child(S.noReposIn)))
+      .children(shown.map((r) => {
+        const on = f.repos.includes(r);
+        const other = elsewhere(r);
+        return h_flex().id(`f-${r}`).h(26).px(6).gap(8).rounded(6).items_center().cursor_pointer().hover((s) => s.bg(t.hover))
+          .on_click(toggle(r))
+          .child(icon(on ? "circle-check" : "circle", 14, on ? t.accent : t.dim))
+          .child(div().flex_1().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(base(r)))
+          .when(Boolean(other), (el) => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(S.inProject(other.name))));
+      }));
     return this.withFooter(t, v_flex().gap(12)
       .child(this.title(t, this.isNew ? S.newProject : S.editProject))
       .child(field(t, S.name, Input.new(this.nameInput).h(32).px(9).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8)))
-      .child(field(t, S.color, h_flex().gap(6).children(Object.entries(COLORS).map(([k, c]) =>
-        div().id(`c-${k}`).size(20).rounded(10).bg(c).cursor_pointer().border_2().border_color(f.color === k ? t.foreground : c)
-          .on_click((_e, cx) => { f.color = k; cx.notify(); })))))
-      .child(field(t, S.repos, v_flex().gap(2).max_h(220).overflow_y_scrollbar().children(
-        this.repoList == null && !all.length ? [div().text_color(t.dim).child(S.loading)]
-          : !all.length ? [div().text_color(t.dim).child(S.reposHint)]
-          : all.map((r) => {
-            const on = f.repos.includes(r);
-            const other = owner.get(r);
-            return h_flex().id(`r-${r}`).h(26).px(6).gap(8).rounded(6).items_center().cursor_pointer().hover((s) => s.bg(t.hover))
-              .on_click((_e, cx) => { f.repos = on ? f.repos.filter((x) => x !== r) : [...f.repos, r]; cx.notify(); })
-              .child(icon(on ? "circle-check" : "circle", 14, on ? t.accent : t.dim))
-              .child(div().flex_1().truncate().child(r))
-              .when(Boolean(other) && other.id !== props().project, (el) => el.child(div().text_size(10.5).text_color(t.dim).child(S.inProject(other.name))));
-          })).child(h_flex().pt(4).child(button(t, "add-folder", `${S.addFolder}…`, (_e, cx) => this.addFolder(cx), { small: true, iconName: "folder-plus" }))), { text: S.reposHint })),
+      .child(field(t, S.projectState, segmented(t, "pst", [["active", S.projectActive, null, "circle-play"], ["paused", S.projectPaused, null, "circle-pause"]],
+        f.paused ? "paused" : "active", (v) => { f.paused = v === "paused"; }), { text: f.paused ? S.pausedHint : "" }))
+      .child(field(t, `${S.repos}${f.repos.length ? ` · ${f.repos.length}` : ""}`, v_flex().gap(2)
+        .when(!f.repos.length, (el) => el.child(div().text_size(11.5).text_color(t.dim).child(S.reposHint)))
+        .children(mine)
+        .child(h_flex().pt(4).child(button(t, "add-folder", `${S.addFolder}…`, (_e, cx) => this.addFolder(cx), { small: true, iconName: "folder-plus" })))
+        .when(Boolean(found), (el) => el.child(found)))),
     [button(t, "cancel", S.cancel, close), button(t, "save", S.save, (_e, cx) => this.saveProject(cx), { primary: true, disabled: !String(f.name ?? "").trim() })],
     this.isNew ? [] : [button(t, "del", S.remove, (_e, cx) => {
       const id = props().project;
@@ -311,16 +347,9 @@ export const Dialogs = {
         .tooltip(S.statusLabel[s]).on_click(upd((x) => setStatus(x, s))).child(statusIcon(t, s, 13)))))
       .child(item("top", "arrow-up-to-line", S.moveTop, (_e, cx) => this.closeAfter(cx, () => this.store.update((d) => { const x = d.tasks.find((y) => y.id === task.id); if (!x) return false; kept(x); return toTop(d, task.id); })), "t"))
       .child(sep())
-      // Later: put it off until a day (it comes back by itself), or someday.
-      .child(h_flex().px(8).py(4).gap(4).flex_wrap().items_center()
-        .child(h_flex().id("later-l").gap(5).pr(2).items_center().text_size(11.5).text_color(t.muted).tooltip(S.laterHint).child(icon("moon", 13)).child(S.later))
-        .children([["tomorrow", S.laterTomorrow], ["mon", S.laterNextWeek], ["someday", S.laterSomeday]].map(([word, label]) => {
-          const v = parseLater(word);
-          return div().id(`later-${word}`).px(7).h(22).rounded(5).flex().items_center().cursor_pointer().text_size(11.5)
-            .bg(task.snooze === v ? t.selected : t.popover).hover((x) => x.bg(t.hover)).on_click(upd((x) => { x.snooze = v; })).child(label);
-        }))
-        .child(div().id("later-pick").px(7).h(22).rounded(5).flex().items_center().cursor_pointer().text_size(11.5).text_color(t.muted)
-          .hover((x) => x.bg(t.hover)).on_click(() => { close(); openDialog("later", { task: task.id }); }).child(S.laterPick)))
+      // Later: put it off until a day (it comes back by itself), or someday. A plain item: a
+      // label beside the choices read as a disabled one.
+      .child(item("later", "moon", `${S.later}…`, () => { close(); openDialog("later", { task: task.id }); }, "z"))
       .when(isLater(task), (el) => el.child(item("bring-back", "rotate-ccw", `${S.bringBack} (${laterLabel(task.snooze)})`, upd((x) => { x.snooze = null; }))))
       .child(sep())
       .child(item("archive", "circle-check", `${S.archive}…`, () => { close(); openDialog("archive", { task: task.id }); }))
@@ -344,13 +373,6 @@ export const Dialogs = {
       .hover((s) => s.bg(t.hover)).on_click(onClick).child(icon(iconName, 13, t.muted)).child(div().flex_1().truncate().child(label));
     const sep = () => div().h(1).my(4).bg(t.border);
     const owner = this.store.data.projects.find((x) => (x.repos ?? []).some((r) => tilde(untilde(r, h), h) === p.repo));
-    const assign = (pid) => (_e, cx) => {
-      this.closeAfter(cx, () => this.store.update((d) => {
-        for (const x of d.projects) x.repos = (x.repos ?? []).filter((r) => tilde(untilde(r, h), h) !== p.repo);
-        const x = pid && d.projects.find((y) => y.id === pid);
-        if (x) x.repos.push(p.repo);
-      }));
-    };
     return v_flex().p(5).text_size(12.5)
       .child(div().px(8).pt(4).pb(6).text_size(11).text_color(t.dim).truncate().child(p.repo))
       .child(item("r-term", "square-terminal", S.newTerminal, () => { close(); act.openHere(p.repo); }))
@@ -361,13 +383,27 @@ export const Dialogs = {
       .child(item("r-issues", "circle-dot", `${S.importIssues}…`, () => { close(); openDialog("issues", { repo: p.repo, project: owner?.id ?? null }); }))
       .child(item("r-linear", "list-plus", `${S.importLinear}…`, () => { close(); openDialog("issues", { source: "linear", repo: p.repo, project: owner?.id ?? null }); }))
       .child(sep())
-      .child(div().px(8).pt(2).pb(4).text_size(11).text_color(t.dim).child(S.moveToProject))
-      .child(h_flex().px(8).pb(4).gap(4).flex_wrap()
-        .child(div().id("r-p-none").px(7).h(22).rounded(5).flex().items_center().cursor_pointer().text_size(11.5)
-          .bg(!owner ? t.selected : t.popover).hover((x) => x.bg(t.hover)).on_click(assign(null)).child(S.noProjectShort))
-        .children(this.store.data.projects.map((x) => div().id(`r-p-${x.id}`).px(7).h(22).rounded(5).flex().items_center().gap(5).cursor_pointer().text_size(11.5)
-          .bg(owner?.id === x.id ? t.selected : t.popover).hover((y) => y.bg(t.hover)).on_click(assign(x.id))
-          .child(div().size(7).rounded(2).bg(projectColor(x))).child(x.name))));
+      // Plain items: a row of small project names read as disabled, and many didn't fit.
+      .child(item("r-move", "arrow-right", `${S.moveToProject}…`, () => { close(); openDialog("repo-project", { repo: p.repo }); }))
+      .when(Boolean(owner), (el) => el.child(item("r-remove", "folder-minus", S.removeFromProject(owner.name),
+        (_e, cx) => this.closeAfter(cx, () => this.store.update((d) => act.removeRepo(d, p.repo, h))))));
+  },
+
+  // ── Which project a repository is in: a list, as long as it needs ──────
+  repoProject(t, p) {
+    const h = home();
+    const owner = this.store.data.projects.find((x) => (x.repos ?? []).some((r) => tilde(untilde(r, h), h) === p.repo));
+    const pick = (pid) => (_e, cx) => this.closeAfter(cx, () => this.store.update((d) => act.moveRepo(d, p.repo, pid, h)));
+    const row = (id, label, on, dim, onClick) => h_flex().id(id).h(28).px(8).gap(8).rounded(6).flex_none().items_center().cursor_pointer()
+      .bg(on ? t.selected : t.popover).hover((s) => s.bg(t.hover)).on_click(onClick)
+      .child(icon(id === "rp-none" ? "circle-x" : "layers", 13, t.muted)).child(div().flex_1().min_w(0).truncate().text_color(dim ? t.dim : t.foreground).child(label))
+      .when(on, (el) => el.child(icon("circle-check", 13, t.accent)));
+    const projects = [...this.store.data.projects].sort((a, b) => (a.paused === true) - (b.paused === true));
+    return v_flex().size_full().min_h(0).p(5).text_size(12.5)
+      .child(div().px(8).pt(4).pb(6).text_size(11).text_color(t.dim).truncate().child(S.moveRepoTitle(base(p.repo))))
+      .child(v_flex().id("rp-list").flex_1().min_h(0).overflow_y_scrollbar()
+        .children(projects.map((x) => row(`rp-${x.id}`, x.paused ? `${x.name} · ${S.projectPaused.toLowerCase()}` : x.name, owner?.id === x.id, x.paused, pick(x.id))))
+        .child(row("rp-none", S.noProjectShort, !owner, true, pick(null))));
   },
 
   // ── Menu of a project: a terminal or an agent across its repos, a task, the form ──
@@ -382,7 +418,7 @@ export const Dialogs = {
     // Plan (its board, a task), work (a terminal or an agent across its repositories), manage.
     return v_flex().p(5).text_size(12.5)
       .child(h_flex().px(8).pt(4).pb(6).gap(6).items_center()
-        .child(div().size(8).rounded(2).flex_none().bg(projectColor(proj)))
+        .child(icon("layers", 13, t.muted))
         .child(div().flex_1().min_w(0).truncate().font_semibold().child(proj.name))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(has ? S.reposCount(proj.repos.length) : S.noRepos)))
       .child(item("p-board", "square-kanban", S.projectBoard, () => { close(); act.openBoard(proj); }))
@@ -393,6 +429,9 @@ export const Dialogs = {
       .children(this.agentList.map((a) => item(`p-ag-${a.key}`, "bot", S.newAgent(a.name), () => { close(); act.openInProject(proj, a.run); })))
       .child(sep())
       .child(item("p-edit", "pencil", `${S.editProjectItem}…`, () => { close(); openDialog("project", { project: proj.id }); }))
+      // Paused: its tasks leave Now and the board of every project; it waits folded in Projects.
+      .child(item("p-pause", proj.paused ? "circle-play" : "circle-pause", proj.paused ? S.activateProject : S.pauseProject,
+        (_e, cx) => this.closeAfter(cx, () => this.store.update((d) => { const x = d.projects.find((y) => y.id === proj.id); if (!x) return false; x.paused = !x.paused; }))))
       .when(this.spacesOf(proj.repos ?? [], proj.id).length > 0, (el) => el.child(item("p-close", "circle-x", `${S.closeProject}…`, () => { close(); openDialog("confirm-close", { repos: proj.repos, name: proj.name, project: proj.id }); })));
   },
 
@@ -414,7 +453,7 @@ export const Dialogs = {
       .when(Boolean(pane), (el) => el.child(item("l-go", "arrow-right", S.focusAgent, () => { close(); run("pane.focus", { pane }); })));
   },
 
-  // ── Later: a day typed as for a due date, or "someday" ──────────────────
+  // ── Later: a quick choice, or a day typed as for a due date, or "someday" ──
   initLater(cx, p) {
     this.saving = false;
     this.laterText = "";
@@ -425,8 +464,9 @@ export const Dialogs = {
     cx.spawn(async (cx) => { if (!this.store.loaded) await this.store.load(); cx.notify(); });
   },
 
-  saveLater(cx) {
-    const v = parseLater(this.laterText);
+  // `word`: one of the quick choices (tomorrow, mon, someday), else what was typed.
+  saveLater(cx, word = null) {
+    const v = parseLater(word ?? this.laterText);
     const id = props().task;
     if (!v || !id) return;
     this.closeAfter(cx, () => this.store.update((d) => { const x = d.tasks.find((y) => y.id === id); if (!x) return false; kept(x).snooze = v; x.updated = Date.now(); }));
@@ -439,7 +479,8 @@ export const Dialogs = {
       : { text: v === null ? S.laterPast : S.laterBad, color: t.blocked };
     return v_flex().p(18).gap(10).size_full()
       .child(this.title(t, S.laterTitle(task?.title ?? "")))
-      .child(field(t, S.later, input(t, this.laterInput, true, this.laterText.trim() && !v), hint))
+      .child(h_flex().gap(6).children(LATER_QUICK.map(([word, label]) => button(t, `later-${word}`, S[label], (_e, cx) => this.saveLater(cx, word), { small: true }))))
+      .child(field(t, S.laterDay, input(t, this.laterInput, true, this.laterText.trim() && !v), hint))
       .child(div().flex_1())
       .child(h_flex().gap(8).justify_end().child(button(t, "cancel", S.cancel, close))
         .child(button(t, "later-save", S.laterSave, (_e, cx) => this.saveLater(cx), { primary: true, iconName: "moon", disabled: !v })));

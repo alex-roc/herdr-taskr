@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Pause a project** (its menu, or its form): it waits folded under *Paused* at the end of Projects,
+  and its tasks leave Now and the board of every project, but for an agent that needs you or works.
+  *Make active* brings it back.
+- **Fold a stacked list**: the chevron by *Projects* or *Now* folds it to its header and the other
+  takes the room; a double click on a name gives that list all of it.
+- **Add repositories straight from a folder**: in the project form, *Add folder…* takes a repository
+  at once, or lists the repositories inside a folder (`~/dev`) to tick, with a filter and *Add all*.
+  The form shows only the project's repositories, each with ✕, and fits a long list.
+- **Remove a repository from its project** from its menu; its tasks stay in the project.
+- **Drag a repository (or a folder, such as `~` under No project) onto a project's header** to move
+  it there; the project is lit while it's under the pointer. *Move to project…* in its menu does the
+  same. Its tasks go with it.
+- **Each terminal's header says what it's for**: its task's title (else its program), the agent's
+  model · effort · context, its folder and state. Split, zoom and close while the pointer is on it;
+  a click selects its task. The tasker layout draws it in place of Herdr's own `pane` header.
+
+### Changed
+- **Projects have an icon, not a color**: the color picker and the colored squares (Projects, board
+  pills and cards, menus) are gone: a project shows `layers` (a stack of repositories), a repository a
+  folder. A `color` already in the file is left alone.
+- A repository's menu moves it with *Move to project…*, a list that fits any number of projects,
+  instead of a row of small names.
+- **A row's second line says where it is**: *project › repository* (or the folder) and how long its
+  agent has been as it is, in Now and on the board's cards, for tasks and terminals alike. A task
+  that names no repository shows the one its terminal is in (a task of a project's own space, its
+  agent in `~/dev/ai-editor`: `General › ai-editor`), else that folder (`General › ~`). The repository leaves the right of
+  the title, which gets the room. Model, effort and context moved to the terminal's header (and stay
+  in the detail). An agent's question still takes that line when it needs you.
+
+- A project's own work opens in the home folder when its repositories share nothing below it (it
+  used to take the first repository's folder).
+
+### Fixed
+- **A terminal opened for a project could land under No project**: its tab was labelled for the
+  project only if its terminal was already there when the tab appeared. It now waits for it (a
+  minute at most). A project's space is also recognised by its name in a folder that's no repository
+  (`~`), so one opened before the project had repositories stays in it.
+- **Later looked disabled** in a task's menu: a dim "Later" label beside small choices. It's now a
+  plain item, *Later…* (`z`), that opens its dialog with Tomorrow, Next week and Someday at a click,
+  or a day you type.
+
 ## 1.5.1 — 2026-11-08
 
 ### Fixed
