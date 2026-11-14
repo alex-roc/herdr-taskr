@@ -72,7 +72,8 @@ cd herdr-tasker
           <figure><img src="img/projects.png" width="660" height="1494" alt="The Projects view: the Acme project with two repositories, their branches, changes and tasks." loading="lazy"></figure>
           <div>
             <p>Press <kbd>tab</kbd> in the list (or click <strong>Projects</strong>) to see the outline. Every repository open in Herdr shows up, under <em>No project</em> at first.</p>
-            <p>Click the folder button in the header to make a project: give it a name and a color, and tick the repositories that belong to it. A repository that isn't open in Herdr comes in with <strong>Add folder…</strong>. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its repositories (<code>~/dev</code>; your home folder while it has none), and show at the project's level, above its repositories; the agent reaches every repository and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its repositories (a repository's menu closes just its own). You can also right-click a repository and pick a project. Drag a project's row onto another to change their order.</p>
+            <p>Click the folder button in the header to make a project: give it a name and add its repositories with <strong>Add folder…</strong>: a repository goes in at once, and a folder that holds several (<code>~/dev</code>) lists them to tick, with a filter. A repository in a project is only a pointer: no terminal, no task, until you start something there; right-click it to move it to another project or remove it from this one. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its repositories (<code>~/dev</code>; your home folder while it has none, or when they share nothing below it), and show at the project's level, above its repositories; the agent reaches every repository and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its repositories (a repository's menu closes just its own). You can also drag a repository (or a folder, like <code>~</code>) onto a project's name to move it there, with its tasks. Drag a project's row onto another to change their order.</p>
+            <p>Many projects? Pause the ones you're not on now (right-click → <strong>Pause project</strong>): they wait folded under <em>Paused</em> at the end, and their tasks leave Now and the board of every project, unless an agent there needs you or is working. <strong>Make active</strong> brings one back.</p>
             <p>Each repository row shows its branch, <code>↑2</code> for commits not pushed and <code>•3</code> for uncommitted changes. Hover them for the words.</p>
           </div>
         </div>
@@ -101,9 +102,10 @@ cd herdr-tasker
       <section class="step" id="start">
         <h2>Start an agent</h2>
         <p>Select a task and press <kbd>l</kbd>, hover it and click ▶, or click <strong>Start agent</strong> in the detail. tasker opens your agent in a new tab in the repository's space, with the task as its first message: the title, the next step, your notes and the issue if there is one.</p>
-        <p>The tab is tied to the task, and the task moves to <strong>Doing</strong> as soon as the agent starts working. Its row shows what the agent is running:</p>
-        <pre><code>opus 5.5 · high · ctx 182k · working 14m</code></pre>
-        <p>That's the model, the reasoning effort, how much context it holds, and how long it has been at it. tasker reads these from Claude Code's and Codex's own logs; other agents show their state and time.</p>
+        <p>The tab is tied to the task, and the task moves to <strong>Doing</strong> as soon as the agent starts working. Its row says where it is and how long the agent has been at it; the terminal's header, what the agent is running:</p>
+        <pre><code>Acme › api · working 14m
+Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
+        <p>That's the task, the model, the reasoning effort and how much context it holds. tasker reads these from Claude Code's and Codex's own logs; other agents show their state and time.</p>
         <h3>In its own worktree</h3>
         <p>Press <kbd>w</kbd> (or <strong>Start in a worktree</strong>) to keep the work apart from your checkout: tasker creates the branch <code>task/&lt;name&gt;</code> in <code>~/.herdr/worktrees/&lt;repo&gt;/&lt;name&gt;</code> first and starts the agent there. Herdr's own worktree tools see it too.</p>
         <div class="note" style="--c:var(--working)"><p>Rather work with terminals? Start an agent anywhere: its tab is a task already, a light one named after what the agent calls its work, moving with it like any other. Touch it (a note, Later, a drag to another place) and it's yours; leave it, and it goes away when its agent quits or its tab closes (after a restart, its agent comes back by itself). With <em>Track agents automatically</em> off in the settings, an agent in no task waits under <strong>Not in a task</strong> with a <strong>Make task</strong> button, and <strong>Add to task…</strong> in its menu.</p></div>
@@ -204,7 +206,7 @@ cd herdr-tasker
         <div class="side-by-side">
           <figure><img src="img/stacked.png" width="660" height="2158" alt="Projects and Now stacked in the sidebar: the Projects outline above, the Now list below." loading="lazy"></figure>
           <div>
-            <p><strong>Stacked</strong>, the sidebar shows Projects above and Now below, as Herdr's own sidebar shows spaces and agents. Drag the line between them to give either more room; <kbd>tab</kbd> moves the keys from one to the other, and the layout's shortcuts go to Now.</p>
+            <p><strong>Stacked</strong>, the sidebar shows Projects above and Now below, as Herdr's own sidebar shows spaces and agents. Drag the line between them to give either more room, fold one to its header with the chevron by its name, or double-click a name to give that list all the room; <kbd>tab</kbd> moves the keys from one to the other, and the layout's shortcuts go to Now.</p>
             <p>That's the whole loop. Next, the <a href="examples.html">examples</a> show workflows built on it.</p>
           </div>
         </div>
