@@ -19,22 +19,25 @@ layouts/taskr.json   Herdr's main layout with the task list, the detail column a
 layouts/taskr.svg    the picture Settings shows for the layout
 themes/taskr.json    the dark theme (light uses Herdr's paper)
 mods/taskr/
-  main.js             one mod, several roles by props: sidebar | detail | status | board | dialog,
+  main.js             one mod, several roles by props: sidebar | detail | status | board | stats | dialog,
                       and pane (a terminal's header: Herdr's own { pane, terminal })
   sidebar.js          Now and Projects, and the bookkeeping (ties new tabs to tasks, moves tasks
                       as their agents work, adds up agent time); only the sidebar copy does it
   detail.js           the task panel; looks up screen, diff and PR only while shown
   board.js            the kanban tab
+  stats.js            the Stats tab: a period and a project, tiles, a chart per measure, a table
   pane.js             each terminal's header: its task, its agent's model and context
   dialogs.js          task and project forms, menus, find, issues, archive, delete, settings
   strings.js          every word the person reads (translate this file to localize)
   lib/store.js        tasks.json: read, cleaned, compare-and-swap writes, file watch
+  lib/flow.js         every rule that moves a task by itself (stage, turn, parked), as plain functions
   lib/world.js        joins tasks with Herdr's spaces, tabs, agents and terminals; Now and Projects
   lib/agentinfo.js    model, effort and context from Claude Code and Codex logs
   lib/git.js          repository state, read without locks
   lib/actions.js      start an agent, worktrees, archive, gh, links
   lib/cache.js        caches shared by every copy of the mod (globalThis)
   lib/usage.js        plan usage: Claude (bin/claude-usage.sh) and Codex (its logs)
+  lib/stats.js        work per day (agent time, turns) and a period's summary, as plain functions
   lib/linear.js       Linear's assigned issues, for the import dialog
   bin/claude-usage.sh asks the claude CLI for usage (get_usage control request), no token read
   lib/open.js         opens dialogs with their sizes
@@ -55,7 +58,8 @@ doesn't have; the list is in `gpui-methods.json`, refresh it after a Herdr updat
   (`test/fixture.mjs`), then fires every click, key and hover and renders again. It catches what
   `herdr-app check` can't: rows that only exist with data, async states and handlers.
 - `test/logic.test.mjs` covers the rules: due dates, cleaning a hand-edited file, which tab is
-  whose, the Now order, tasks following their agents, reading agent logs, lookups only while shown.
+  whose, the Now order, the rules of `lib/flow.js`, files from before, reading agent logs, lookups only
+while shown.
 
 `scripts/check.sh` runs Herdr's own `herdr-app check` on a copy of the mod per role and dialog
 (`check` alone renders with no props).
@@ -63,7 +67,7 @@ doesn't have; the list is in `gpui-methods.json`, refresh it after a Herdr updat
 ## A demo in the real window
 
 ```sh
-node scripts/demo.mjs          # 3 made-up folders in ~/taskr-demo, 13 tasks, 4 stand-in agents
+node scripts/demo.mjs          # 3 made-up folders in ~/taskr-demo, 14 tasks, 4 stand-in agents
 node scripts/demo.mjs --adopt <tab id>   # also one of your real agent tabs, as a demo task
 node scripts/demo.mjs --clean  # closes the demo spaces, deletes ~/taskr-demo, restores your tasks
 ```
@@ -72,7 +76,8 @@ The stand-in agents (`scripts/fake-agent.sh`) report working, blocked (with a qu
 through the Program Status Protocol, as real agents do:
 `printf '\e]7501;state=blocked:kind=question:app=claude-code:msg=<base64>\e\\'`. This is how
 `preview.png` and `docs/board.png` are made: no personal data in them. The demo covers a blocked, a
-working and a finished agent, a task to resume, one put off and one *someday*, a task and a terminal
+working and a finished agent, a task to resume, one parked until a day and one *someday*, one waiting
+on someone, one in progress that hasn't moved for days, a task and a terminal
 for the whole Acme project (its own space, `~/taskr-demo`), and reminders off (no toasts in shots).
 
 Screenshots, with the window maximized (`herdr-app do window.maximize`, again to put it back: a window

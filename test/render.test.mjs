@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { H, touch } from "herdr";
 import { walk, isElement, text } from "gpui-kit";
 import Taskr from "../mods/taskr/main.js";
-import { world, cx, settle, until, FILE, task } from "./fixture.mjs";
+import { world, cx, settle, until, FILE, task, iso } from "./fixture.mjs";
 
 async function mount(props, setup) {
   const w = world();
@@ -54,7 +54,7 @@ async function fireAll(view, { skip = [] } = {}) {
   return fired;
 }
 
-const ROLES = [{ role: "sidebar" }, { role: "detail" }, { role: "status" }, { role: "board" }];
+const ROLES = [{ role: "sidebar" }, { role: "detail" }, { role: "status" }, { role: "board" }, { role: "stats" }, { role: "stats", project: "pa" }];
 
 for (const p of ROLES) {
   test(`role ${p.role}: renders and every control works`, async () => {
@@ -69,12 +69,12 @@ for (const p of ROLES) {
   });
 }
 
-test("sidebar: Projects view, done shown, everything folded and unfolded", async () => {
+test("sidebar: Projects view, everything folded and unfolded; no toggle for done tasks (they're on the board)", async () => {
   const { view } = await mount({ role: "sidebar" });
   H.shared["taskr.view"] = "projects";
   render(view);
   await settle();
-  view.filters.done = true;
+  assert.ok(!walk(render(view).tree).some((n) => n.id === "flt-done"));
   await fireAll(view);
   for (const id of ["p:pa", "p:-", "r:pa:~/dev/app"]) view.folded.add(id);
   render(view);
@@ -93,7 +93,7 @@ test("sidebar: the key commands", async () => {
   for (const c2 of ["board", "jump", "view", "new", "focus"]) view.command(c2, cx());
 });
 
-for (const dialog of ["task", "project", "menu", "repo", "repo-project", "jump", "issues", "archive", "settings", "confirm-delete", "loose", "project-menu", "confirm-close", "later"]) {
+for (const dialog of ["task", "project", "menu", "repo", "repo-project", "jump", "issues", "archive", "settings", "confirm-delete", "loose", "project-menu", "confirm-close", "later", "start"]) {
   for (const extra of [{}, { task: "blocked1", project: "pa", repo: "~/dev/app", tab: "tb4", repos: ["~/dev/app"], name: "App" }, { task: "review1", project: "pw", repo: "~/dev/web", tab: "tb3", attach: "tb4" }]) {
     test(`dialog ${dialog} ${JSON.stringify(extra)}`, async () => {
       const { view, c } = await mount({ dialog, overlay: "ov1", ...extra });
@@ -325,12 +325,12 @@ test("projects reorder by dragging one onto another; a plain click still folds",
   assert.equal(view.dragProject, null);
 });
 
-test("tasks reorder by dragging a row onto another; from Inbox onto Up next it changes list", async () => {
+test("tasks reorder by dragging a row onto another; from Inbox onto Next it changes list", async () => {
   const { view } = await mount({ role: "sidebar" });
   H.shared["taskr.view"] = "now";
   const row = (id) => walk(render(view).tree).find((n) => n.id === `t-${id}`);
   const order = () => { const d = JSON.parse(H.files.get(FILE())); return d.tasks.filter((t) => ["next2", "next1"].includes(t.id)).sort((a, b) => a.rank - b.rank).map((t) => t.id); };
-  // Up next: next2 (was P1) above next1 (was P3). next1 dragged onto next2: above it.
+  // Next: next2 (was P1) above next1 (was P3). next1 dragged onto next2: above it.
   row("next1").handlers["on_mouse_down:left"]({}, cx());
   row("next2").handlers.on_mouse_move({}, cx());
   assert.ok(row("next2").calls.some(([m]) => m === "border_t"), "a line above next2");
@@ -339,7 +339,7 @@ test("tasks reorder by dragging a row onto another; from Inbox onto Up next it c
   await settle();
   assert.deepEqual(order(), ["next1", "next2"]);
   assert.ok(c.stopped > 0, "the drop isn't also a click");
-  // An idea from the Inbox dropped onto Up next: planned, at that place.
+  // An idea from the Inbox dropped onto Next: decided, at that place.
   row("inbox1").handlers["on_mouse_down:left"]({}, cx());
   row("next2").handlers.on_mouse_move({}, cx());
   row("next2").handlers["on_mouse_up:left"]({}, cx());
@@ -463,4 +463,195 @@ test("board: a card says where it is and how long, not the model", async () => {
   const card = tree.find((n) => n.id === "card-review1").children.map(text).join(" ");
   assert.match(card, /app/);
   assert.doesNotMatch(card, /opus|ctx|high/i);
+});
+
+test("waiting on someone: who and a day to follow up (three days by default); until its agent works, from Later", async () => {
+  const { view } = await mount({ dialog: "menu", overlay: "ov1", task: "next1" });
+  H.overlays.length = 0;
+  walk(render(view).tree).find((n) => n.id === "waiting").handlers.on_click({}, cx());
+  assert.deepEqual(H.overlays.map((o) => [o.props.dialog, o.props.waiting]), [["later", true]]);
+  const d = await mount({ dialog: "later", overlay: "ov2", task: "next1", waiting: true });
+  assert.equal(d.view.laterText, "+3d");
+  d.view.whoInput.type("Ana", cx());
+  d.view.whoInput.submit(cx());
+  await settle();
+  const t = JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "next1");
+  assert.equal(t.waiting_on, "Ana");
+  assert.match(t.snooze, /^\d{4}-\d{2}-\d{2}$/);
+  const l = await mount({ dialog: "later", overlay: "ov3", task: "inbox1" });
+  walk(render(l.view).tree).find((n) => n.id === "later-agent").handlers.on_click({}, cx());
+  await settle();
+  const i = JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "inbox1");
+  assert.equal(i.snooze, "agent");
+  assert.equal(i.waiting_on, undefined);
+});
+
+test("Now: In progress counts its rows (the limit is in the status bar); one that hasn't moved for days shows its time in yellow", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["taskr.view"] = "now";
+  await view.store.update((d) => {
+    const t = d.tasks.find((x) => x.id === "next1");
+    t.status = "doing";
+    t.updated = Date.now() - 10 * 86400000;
+    t.history = [{ s: "doing", at: t.updated }];
+  });
+  await settle(25);
+  const tree = walk(render(view).tree);
+  // Only next1 is in the section (doing1, remote1 work and blocked1 asks): 1, not 4/2.
+  const head = tree.find((n) => n.id === "sec-doing").children.map(text).join(" ");
+  assert.match(head, /In progress\s*1/);
+  assert.doesNotMatch(head, /\//);
+  assert.match(tree.find((n) => n.id === "t-next1").children.map(text).join(" "), /in progress 10d/);
+});
+
+test("Projects is an outliner: a folder dragged onto another shows where it lands and takes that place; a task goes into a folder", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["taskr.view"] = "projects";
+  await settle();
+  const node = (id) => walk(render(view).tree).find((n) => n.id === id);
+  // docs onto web, in Website: a line above web, the dragged row dimmed, then docs first.
+  node("r:pw:~/dev/docs").handlers["on_mouse_down:left"]({}, cx());
+  node("r:pw:~/dev/web").handlers.on_mouse_move({}, cx());
+  const target = node("r:pw:~/dev/web");
+  assert.ok(target.calls.some(([m]) => m === "border_t"), "a line shows where it lands");
+  assert.ok(node("r:pw:~/dev/docs").calls.some(([m, v]) => m === "opacity" && v[0] < 1), "the dragged folder is lifted");
+  node("r:pw:~/dev/web").handlers["on_mouse_up:left"]({}, cx());
+  await settle();
+  assert.deepEqual(JSON.parse(H.files.get(FILE())).projects.find((p) => p.id === "pw").folders, ["~/dev/docs", "~/dev/web"]);
+  // Let go on itself: nothing moves, and the click that ends the drag doesn't fold it.
+  node("r:pw:~/dev/web").handlers["on_mouse_down:left"]({}, cx());
+  node("r:pw:~/dev/web").handlers.on_mouse_move({}, cx());
+  node("r:pw:~/dev/web").handlers["on_mouse_up:left"]({}, cx());
+  node("r:pw:~/dev/web").handlers.on_click({}, cx());
+  assert.ok(!view.folded.has("r:pw:~/dev/web"));
+  // app (App) onto web (Website): it moves there, before web.
+  node("r:pa:~/dev/app").handlers["on_mouse_down:left"]({}, cx());
+  node("r:pw:~/dev/web").handlers.on_mouse_move({}, cx());
+  node("r:pw:~/dev/web").handlers["on_mouse_up:left"]({}, cx());
+  await settle();
+  let d = JSON.parse(H.files.get(FILE()));
+  assert.deepEqual(d.projects.find((p) => p.id === "pw").folders, ["~/dev/docs", "~/dev/app", "~/dev/web"]);
+  // A task (next1, in web) onto the docs folder: the folder is lit, the task goes in.
+  await view.store.load();
+  await settle();
+  node("t-next1").handlers["on_mouse_down:left"]({}, cx());
+  node("r:pw:~/dev/docs").handlers.on_mouse_move({}, cx());
+  assert.ok(node("r:pw:~/dev/docs").calls.some(([m]) => m === "bg"), "the folder it would go in is lit");
+  node("r:pw:~/dev/docs").handlers["on_mouse_up:left"]({}, cx());
+  await settle();
+  d = JSON.parse(H.files.get(FILE()));
+  assert.deepEqual(["project", "folder"].map((k) => d.tasks.find((x) => x.id === "next1")[k]), ["pw", "~/dev/docs"]);
+});
+
+test("the + for a new task is in Now's header, not in Projects' (tasks are made in their project or folder)", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["taskr.view"] = "projects";
+  await settle();
+  assert.ok(!walk(render(view).tree).some((n) => n.id === "add-task"));
+  H.shared["taskr.view"] = "now";
+  assert.ok(walk(render(view).tree).some((n) => n.id === "add-task"));
+});
+
+test("Start with…: the agent, model and effort are kept on the task and its agent starts with their flags", async () => {
+  const d = await mount({ dialog: "start", overlay: "ov1", task: "next1" });
+  await settle();
+  const node = (id) => walk(render(d.view).tree).find((n) => n.id === id);
+  node("sa-codex").handlers.on_click({}, cx());
+  d.view.modelInput.type("gpt-6.1-sol", cx());
+  node("se-high").handlers.on_click({}, cx());
+  node("start-go").handlers.on_click({}, cx());
+  await settle(40);
+  const t = JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "next1");
+  assert.deepEqual([t.agent, t.model, t.effort], ["codex", "gpt-6.1-sol", "high"]);
+  const opened = H.runs.find(([n]) => n === "tab.new" || n === "space.new");
+  assert.deepEqual(opened[1].argv, ["codex", "-m", "gpt-6.1-sol", "-c", 'model_reasoning_effort="high"']);
+  // Back to the default agent and no model: the task forgets them.
+  const d2 = await mount({ dialog: "start", overlay: "ov2", task: "next1" });
+  await settle();
+  walk(render(d2.view).tree).find((n) => n.id === "sa-null").handlers.on_click({}, cx());
+  d2.view.modelInput.set_value("");
+  d2.view.choice.model = "";
+  walk(render(d2.view).tree).find((n) => n.id === "start-go").handlers.on_click({}, cx());
+  await settle(40);
+  const t2 = JSON.parse(H.files.get(FILE())).tasks.find((x) => x.id === "next1");
+  assert.deepEqual([t2.agent, t2.model], [undefined, undefined]);
+});
+
+test("project and folder menus: a task, a terminal, the board; no list of every agent", async () => {
+  const pm = await mount({ dialog: "project-menu", overlay: "ov1", project: "pw" });
+  await settle();
+  const ids = walk(render(pm.view).tree).map((n) => n.id).filter((x) => /^p-/.test(x ?? ""));
+  assert.deepEqual(ids.slice(0, 3), ["p-task", "p-term", "p-board"]);
+  assert.ok(!ids.some((x) => x.startsWith("p-ag-")));
+  const rm = await mount({ dialog: "repo", overlay: "ov2", repo: "~/dev/web", project: "pw" });
+  await settle();
+  const rids = walk(render(rm.view).tree).map((n) => n.id).filter((x) => /^r-/.test(x ?? ""));
+  assert.deepEqual(rids.slice(0, 2), ["r-task", "r-term"]);
+  assert.ok(!rids.some((x) => x.startsWith("r-ag-")));
+});
+
+test("a press becomes a drag only when the pointer moves; a stale press expires; leaving the list ends it", async () => {
+  const { view } = await mount({ role: "sidebar" });
+  H.shared["taskr.view"] = "projects";
+  await settle();
+  const node = (id) => walk(render(view).tree).find((n) => n.id === id);
+  const at = (x, y) => ({ position: { x, y } });
+  // Pressed (a button's click whose release went to a menu) and barely moved: no drag, no line.
+  node("p:pa").handlers["on_mouse_down:left"](at(10, 10), cx());
+  node("p:pw").handlers.on_mouse_move(at(11, 11), cx());
+  assert.equal(view.dragProject ?? null, null);
+  assert.ok(!node("p:pw").calls.some(([m]) => m === "border_t" || m === "border_b"));
+  // Long after: the press is forgotten, however far the pointer goes.
+  view.pressed.at -= 5000;
+  node("p:pw").handlers.on_mouse_move(at(10, 80), cx());
+  assert.equal(view.dragProject ?? null, null);
+  assert.equal(view.pressed, null);
+  // A real drag, then the pointer leaves the list: over.
+  node("p:pa").handlers["on_mouse_down:left"](at(10, 10), cx());
+  node("p:pw").handlers.on_mouse_move(at(10, 40), cx());
+  assert.equal(view.dragProject, "pa");
+  walk(render(view).tree).find((n) => n.id === "taskr-sidebar").handlers.on_hover(false, cx());
+  assert.equal(view.dragProject, null);
+});
+
+test("task form: from a project or a folder it says where and doesn't ask for the project; from Now it does; a new task starts in Inbox or Next", async () => {
+  const inProject = await mount({ dialog: "task", overlay: "ov1", project: "pw", repo: "~/dev/web" });
+  await settle();
+  let ids = walk(render(inProject.view).tree).map((n) => n.id ?? "");
+  assert.match(text(render(inProject.view).tree), /New task · Website/);
+  assert.ok(!ids.some((x) => x.startsWith("proj-")), "no project picker");
+  assert.ok(ids.includes("repo-~/dev/docs"), "its folders to pick from");
+  assert.deepEqual(ids.filter((x) => x.startsWith("st-")), ["st-inbox", "st-next"]);
+  const fromNow = await mount({ dialog: "task", overlay: "ov2" });
+  await settle();
+  ids = walk(render(fromNow.view).tree).map((n) => n.id ?? "");
+  assert.ok(ids.some((x) => x.startsWith("proj-")), "from Now: where does it go?");
+  const edit = await mount({ dialog: "task", overlay: "ov3", task: "next1" });
+  await settle();
+  ids = walk(render(edit.view).tree).map((n) => n.id ?? "");
+  assert.ok(!ids.some((x) => x.startsWith("proj-")), "editing doesn't move it to another project");
+  assert.ok(ids.includes("st-dropped"));
+});
+
+test("Stats: periods and projects to pick, tiles, a chart per measure, a table by project; opened from Now and a project's menu", async () => {
+  const { view } = await mount({ role: "stats" }, () => {
+    const d = JSON.parse(H.files.get(FILE()));
+    d.tasks.push(task({ id: "w1", title: "Worked", project: "pa", status: "doing", auto: true, work: { [iso(0)]: [7200000, 4] } }));
+    H.files.set(FILE(), JSON.stringify(d));
+  });
+  await settle();
+  let words = text(render(view).tree);
+  assert.match(words, /Worked on/);
+  assert.match(words, /1 with no plan/);
+  assert.match(words, /2h/);
+  const node = (id) => walk(render(view).tree).find((n) => n.id === id);
+  assert.ok(node("st-bars-time") && node("st-bars-done"), "two charts, one measure each");
+  node("sp-today").handlers.on_click({}, cx());
+  assert.ok(!node("st-bars-time"), "no bars for a single day");
+  node("spj-pa").handlers.on_click({}, cx());
+  assert.ok(!node("st-projects"), "one project: no table by project");
+  const side = await mount({ role: "sidebar" });
+  H.runs.length = 0;
+  walk(render(side.view).tree).find((n) => n.id === "stats").handlers.on_click({}, cx());
+  assert.deepEqual(H.runs.at(-1), ["tab.new", { name: "Stats", mod: "taskr", props: { role: "stats" } }]);
 });

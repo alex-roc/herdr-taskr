@@ -1,10 +1,17 @@
 // Small pure helpers.
 
-export const STATUSES = ["inbox", "next", "doing", "waiting", "review", "done", "dropped"];
+// A task's stage: where the work is. You set it (an agent starting puts it in progress); it's kept
+// in the file. Dropped is Done with `outcome: "dropped"`: closed without doing it.
+export const STATUSES = ["inbox", "next", "doing", "review", "done"];
+// What the person can pick: the stages, and Dropped.
+export const CHOICES = [...STATUSES, "dropped"];
 // A terminal's label set by taskr (task, project), or by tasker, its name before 1.6.
 export const label = (term, key) => term?.labels?.[`taskr.${key}`] ?? term?.labels?.[`tasker.${key}`];
 
-export const OPEN = new Set(["inbox", "next", "doing", "waiting", "review"]);
+export const OPEN = new Set(["inbox", "next", "doing", "review"]);
+export const isDropped = (t) => t?.status === "done" && t?.outcome === "dropped";
+// The stage as shown: Dropped apart from Done.
+export const stageOf = (t) => (isDropped(t) ? "dropped" : t?.status ?? "inbox");
 // Agent urgency, as Herdr's agents list ranks it.
 export const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
 
@@ -119,21 +126,21 @@ export function daysUntil(due) {
   return Math.round((a - b) / 86400000);
 }
 
-// "Later": a task put off until a day ("YYYY-MM-DD"), or "someday" (until brought back).
-// It leaves Now's lists meanwhile and comes back on that day.
+// Parked (Later): until a day ("YYYY-MM-DD"), "someday" (until brought back), or "agent" (until its
+// agent works again). Waiting on someone is the same, with `waiting_on`. Its stage doesn't change;
+// it leaves Now's lists (and the in-progress count) meanwhile.
 export function isLater(t, day = today()) {
-  return t?.snooze === "someday" || (typeof t?.snooze === "string" && t.snooze > day);
+  return t?.snooze === "someday" || t?.snooze === "agent" || (typeof t?.snooze === "string" && /^\d{4}-/.test(t.snooze) && t.snooze > day);
 }
 
-// A task set aside, dimmed wherever it shows: closed, put off, or Idle (no plan, its agent seen
-// and waiting). Not while its agent works or asks for you: then it's lit, wherever it is.
-export const aside = (t, top = null) => !["working", "blocked"].includes(top)
-  && (["done", "dropped"].includes(t?.status) || isLater(t) || (t?.auto === true && t?.idle === true));
+// A task set aside, dimmed wherever it shows: closed or parked. Not while its agent works or asks
+// for you: then it's lit, wherever it is.
+export const aside = (t, top = null) => !["working", "blocked"].includes(top) && (t?.status === "done" || isLater(t));
 
-export const laterLabel = (snooze) => (snooze === "someday" ? "someday" : dueLabel(snooze));
+export const laterLabel = (snooze) => (snooze === "someday" || snooze === "agent" ? snooze : dueLabel(snooze));
 
 // What a person types for Later: a due-date word for a day after today, or "someday".
-// Not understood → undefined; today or a past day → null (it wouldn't be put off at all).
+// Not understood → undefined; today or a past day → null (it wouldn't be parked at all).
 export function parseLater(text, now = new Date()) {
   const s = String(text ?? "").trim().toLowerCase();
   if (s === "someday" || s === "some day") return "someday";

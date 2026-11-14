@@ -1,17 +1,86 @@
 # Changelog
 
-## 1.6.1 — 2026-11-14
+## 1.7.0 — 2026-11-14
+
+**One language for tasks: three questions, three owners.** A task's **stage** (Inbox, Next, In progress,
+Review, Done) is where the work is, and you set it. Its agent's **turn** (Working, Needs you,
+Finished, Idle) is what the agent is doing now, Herdr's own words, never kept. **Parked** says when it
+comes back. The turn no longer writes the stage, but for an agent starting work (In progress): a
+finished turn isn't a finished task.
+
+### New
+- **Stats**: a tab (the chart button in Now, *Stats* in a project's menu, `taskr.stats`) with today
+  or the last 7, 30 or 90 days, for every project or one: tasks done, tasks worked on (those with no
+  plan counted like any other), agents' turns and agent time, a chart per day for agent time and one
+  for done tasks, and a table by project. Agent time and turns are kept per day from now on (`work`
+  on each task); done tasks count backwards from their history.
 
 ### Changed
-- A task with no plan no longer leaves *To review* because you look at its terminal (you may be
-  working with it): only after the time set, which now offers *Always* instead of *Until seen*.
+- **A task no longer goes to Review when its agent stops.** It stays in progress (its agent Idle once
+  you've seen it) until you say it's ready: *Ready for review* in the detail or the menu, or an agent
+  writing it in the file. An agent working on a task in Review leaves it there (fixing what you found
+  is part of the review). If you work with pull requests, a PR opened for a task with its own worktree
+  branch moves it to Review; nothing else asks `gh` in the background.
+- **Now follows one rule**: what the agents ask of you first (*Needs you*, *Finished*, *Working*),
+  then the stages (*To review*, *In progress*, *Next*, *Inbox*), then *Later*. *Up next* is *Next*.
+  *Finished* is new: agents that finished their turn and wait for a word from you, the ones you haven't
+  seen first (in bold), then the Idle ones. *In progress* shows work under way with no agent working or
+  waiting for you.
+- **Doing is called In progress** (still `doing` in the file): "in progress" isn't "being done right
+  now", which is *Working*. The limit (`In progress 2/6`) is in the status bar and on the board.
+- **Stalled is no longer a section**: a task in progress that hasn't moved for days shows its time
+  in yellow on its row (`in progress 5d`). The setting *Stalled after* is *Days without movement*.
+- **Waiting is no longer a stage, but a way to park**: *Waiting on…* (the menu or the detail) takes who
+  and a day to follow up (three days unless you type another); it comes back by itself, with
+  *Follow up with Ana* as its next step if it had none. The board has five columns.
+- **Dropped is Done with an outcome** (✗): still picked like a stage, out of the board and of *Done
+  today*.
+- **Idle is no longer a section**: Idle is the agent's turn (seen, waiting for you), and a no-plan
+  task whose agent is idle stays in progress (under Finished), counted for the limit. *Later…* has *Until its agent works*,
+  and *Park idle agents* in the settings (1 hour, 4 hours, a day; off by default) does it by itself,
+  in place of *To review, for tasks with no plan*.
+- **A parked task leaves the in-progress count**, in the status bar, in Now and on the board.
+- A task with no plan is made in progress (it used to be Next, Review or Idle as its agent was). When
+  its agent quits it's Done (one in Review stays there); either way its tab is a terminal
+  again (`zsh · folder`), and an agent started in it again takes the same task back up.
+- An agent's question reads *needs you 3m* (was *waiting 3m*, which clashed with the Waiting status).
+- One vocabulary everywhere: the task form's *Status* is *Stage*, Later's button is *Park* (was *Put
+  off*), and the words that went (Up next, Stalled, Idle as a section, Waiting as a status) are gone
+  from the app, the docs and the site.
+- **Projects is an outliner.** A folder dragged onto another takes that place (a line shows where
+  it lands): it reorders a project's folders, or moves one into another project at that spot; onto a
+  project's header it goes last there. A task dragged onto a folder, a project's header or a task in
+  another folder moves there (one with a worktree stays with its folder). What's dragged is dimmed with
+  what's in it, and letting go no longer folds the row. It used to move only onto a project's header,
+  with no sign of where.
+- Projects' header has no `+` any more: tasks are made in their project or folder (their own `+`),
+  or from Now. No eye either: done tasks are on the board (Projects still shows a closed task while
+  its terminal is open).
+- **A project's row glows under the pointer**, as Now's rows do, and its actions read task, terminal,
+  board, menu (a folder's: task, terminal, menu). The green line that could show over the projects
+  without dragging is gone: a press becomes a drag only once the pointer moves, a press whose release
+  went to a menu expires, and leaving the list ends a drag.
+- **Start with…** (beside *Start agent* in the detail, and in the task's menu) picks the agent, its
+  model and reasoning effort, and a worktree; the task keeps them for its next starts (`agent`,
+  `model`, `effort` in tasks.json). The project and folder menus no longer list every installed
+  agent: a terminal, and agents from tasks. *Start in a worktree* moved into it (`w` still does it).
+- **The task form asks only what it doesn't know**: from a project or a folder it says where ("New
+  task · Acme") and leaves the project out; editing never moves a task to another project (drag it in
+  Projects); a new task starts in Inbox or Next.
 - Quiet projects pause after a day by default (it was 3).
-- **When the agent of a task with no plan quits, its tab is a terminal again.** The task still goes
-  to Done, but it lets go of its tab: Projects shows `>_ zsh · folder` there instead of a checked
-  task over a live shell. Start an agent in that tab again and the same task picks up.
-- **One rule for dimmed rows**, in Now, Projects and the board: a task is dimmed when it's closed,
-  put off with Later, or Idle; not while its agent works or asks for you. Idle rows used to stay
-  lit, and a task put off whose agent asked for you was dimmed in *Needs you*.
+- One rule for dimmed rows, in Now, Projects and the board: closed or parked, unless its agent
+  works or asks for you.
+
+### tasks.json
+- Status is `inbox`, `next`, `doing`, `review` or `done`; a dropped task has `outcome: "dropped"`.
+  Parked tasks have `snooze` (`YYYY-MM-DD`, `someday` or `agent`) and, when waiting on someone,
+  `waiting_on`. A no-plan task whose agent quit has `freed`. The setting `review_after` is now
+  `park_after`.
+- Files from before are read as they were meant: `waiting` as in progress, parked waiting on someone (back
+  three days after it began waiting), `dropped` as Done with its outcome, an Idle task with no plan as
+  parked until its agent works, and `review_after` as `park_after` (an hour stays an hour; *always*
+  is never).
+- The rules that move a task by themselves live in one module, `lib/flow.js`, with their tests.
 
 ## 1.6.0 — 2026-11-14
 

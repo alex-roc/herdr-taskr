@@ -2,6 +2,8 @@
 
 import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, terminals, shared, setShared } from "herdr";
 import { untrackedName, released } from "./world.js";
+import { adoptStage } from "./flow.js";
+import { mergeWork } from "./stats.js";
 import { git, place } from "./git.js";
 import { setStatus, newTask } from "./store.js";
 import { untilde, tilde, slug, projectFolder, label } from "./util.js";
@@ -26,6 +28,20 @@ async function runOf(app) {
     if (a) return a.run;
   } catch {}
   return [app];
+}
+
+// The model and reasoning effort an agent can be started with, by the agent's own flags: Claude
+// Code (`--model`, `--effort`) and Codex (`-m`, `-c model_reasoning_effort=`). Others take neither.
+export const EFFORTS = { claude: ["low", "medium", "high", "xhigh", "max"], codex: ["low", "medium", "high", "xhigh"] };
+export const kindOf = (argv) => /(^|\/)(claude|codex)$/.exec(argv?.[0] ?? "")?.[2] ?? null;
+
+export function withChoices(argv, { model = null, effort = null } = {}) {
+  const kind = kindOf(argv);
+  if (!kind) return argv;
+  const out = [...argv];
+  if (model) out.push(kind === "codex" ? "-m" : "--model", model);
+  if (effort && EFFORTS[kind].includes(effort)) out.push(...(kind === "codex" ? ["-c", `model_reasoning_effort="${effort}"`] : ["--effort", effort]));
+  return out;
 }
 
 // The command that continues a conversation: claude --resume <id>, codex resume <id>.
@@ -70,16 +86,15 @@ export function projectSpace(project, folder) {
 
 // Opens a tab in the project's space (else makes the space) and remembers it, so the new
 // tab's terminals get labelled taskr.project=<id> and show under the project.
-export function openInProject(project, argv) {
+export function openInProject(project) {
   const at = projectPlace(project);
   if (!at) return;
   const sp = spaces();
   const pending = { project: project.id, name: null, at: Date.now(),
     beforeSpaces: sp.map((s) => s.id), beforeTabs: sp.flatMap((s) => (s.tabs ?? []).map((t) => t.id)) };
   const space = projectSpace(project, at.folder);
-  const args = { folder: at.folder, ...(argv ? { argv: withDirs(argv, at.others) } : {}) };
-  if (space) run("tab.new", { space: space.id, ...args });
-  else run("space.new", { name: project.name, ...args });
+  if (space) run("tab.new", { space: space.id, folder: at.folder });
+  else run("space.new", { name: project.name, folder: at.folder });
   pending.space = space?.id ?? null;
   setShared("taskr.pending", [...(shared("taskr.pending") ?? []), pending]);
 }
@@ -96,6 +111,16 @@ export function openBoard(project = null) {
   else run("tab.new", { name, mod: "taskr", props: { role: "board", ...(project ? { project: project.id } : {}) } });
 }
 
+// Stats: one tab (a project's chosen in it, or every project's), opened or brought to the front.
+export function openStats(project = null) {
+  setShared("taskr.statsPick", { project: project?.id ?? null, at: Date.now() });
+  const ps = panes();
+  const tab = spaces().flatMap((s) => s.tabs ?? []).find((t) => t.name === S.stats && ps.some((p) => p.tab === t.id && p.mod === "taskr"));
+  const pane = tab && ps.find((p) => p.tab === tab.id && p.mod === "taskr");
+  if (pane) run("pane.focus", { pane: pane.pane });
+  else run("tab.new", { name: S.stats, mod: "taskr", props: { role: "stats", ...(project ? { project: project.id } : {}) } });
+}
+
 // Labels a tab's terminals as the project's (shown at the project's level).
 export async function labelProject(projectId, tabId, ts) {
   for (const term of ts.filter((x) => x.labels?.["herdr.tab"] === tabId && !x.address.includes("/"))) {
@@ -103,14 +128,13 @@ export async function labelProject(projectId, tabId, ts) {
   }
 }
 
-// A terminal (or an agent, with argv) in a repo, outside any task: a tab in the
-// space already there, else a new space.
-export function openHere(repoKey, argv) {
+// A terminal in a folder, outside any task: a tab in the space already there, else a new space.
+// (An agent starts from a task: Start agent, or Start with… to pick which.)
+export function openHere(repoKey) {
   const folder = untilde(repoKey, home());
   const space = spaceAt(folder);
-  const args = { folder, ...(argv ? { argv } : {}) };
-  if (space) run("tab.new", { space: space.id, ...args });
-  else run("space.new", args);
+  if (space) run("tab.new", { space: space.id, folder });
+  else run("space.new", { folder });
 }
 
 // Makes (or reuses) the task's worktree on branch task/<slug>. Another task with the
@@ -137,7 +161,8 @@ export async function launch(store, task, { worktree = false, resume = null } = 
   // A task of the whole project (no repository of its own) works across all of them,
   // resumed too: the other repositories are added again.
   const wide = !task.folder ? projectPlace(project, h) : null;
-  let argv = resume ? await resumeArgv(resume) : await agentArgv(store.data.settings.agent);
+  // The agent the task was set to start with (Start with…), else the one in the settings.
+  let argv = resume ? await resumeArgv(resume) : withChoices(await agentArgv(task.agent ?? store.data.settings.agent), task);
   // A resumed agent already has its conversation: no first message.
   const prompt = resume ? null : S.prompt(task, project);
   const beforeSpaces = new Set(spaces().map((s) => s.id));
@@ -196,25 +221,23 @@ export async function link(store, taskId, tabId, ts) {
 }
 
 // Makes a task of an agent's tab that belongs to none (`u` from the world's untracked list),
-// tied to it: one with no plan (`auto`), named after its agent, as it is now (Doing while it
-// works or asks, To review once it finished, Idle while it waits for a word from you).
-// A tab opened for a whole project goes to that project, with no folder.
+// tied to it: one with no plan (`auto`), named after its agent, in progress (an open agent is work
+// under way). A tab opened for a whole project goes to that project, with no folder.
 export async function adopt(store, u) {
-  const st = u.top === "working" || u.top === "blocked" ? "doing" : u.top === "done" ? "review" : "next";
   let id = null;
   const where = u.project ? { project: u.project, folder: null } : { folder: u.where.key };
   await store.update((d) => {
-    // One task per tab (two looks at once, two lists). A task with no plan closed when its agent
-    // quit takes it back: an agent started again in its tab goes on with it.
+    // One task per tab (two looks at once, two lists). A task with no plan whose agent quit takes
+    // it back: an agent started again in its tab goes on with it (in Review, it stays there).
     const had = d.tasks.find((t) => (t.tabs ?? []).includes(u.tab));
     if (had && !released(had)) return false;
     if (had) {
-      setStatus(had, st);
-      if (st === "next") had.idle = true;
+      setStatus(had, adoptStage(had));
+      delete had.freed;
       id = had.id;
       return;
     }
-    id = newTask(d, { title: untrackedName(u), ...where, status: st, tabs: [u.tab], auto: true, ...(st === "next" ? { idle: true } : {}) }).id;
+    id = newTask(d, { title: untrackedName(u), ...where, status: "doing", tabs: [u.tab], auto: true }).id;
   });
   if (id) await link(store, id, u.tab, terminals());
   return id;
@@ -231,6 +254,7 @@ export async function merge(store, fromId, toId, ts) {
     b.tabs = [...new Set([...(b.tabs ?? []), ...(a.tabs ?? [])])];
     b.sessions = [...(b.sessions ?? []), ...(a.sessions ?? []).filter((s) => !(b.sessions ?? []).some((x) => x.id === s.id))].slice(-5);
     b.agent_ms = (b.agent_ms ?? 0) + (a.agent_ms ?? 0);
+    mergeWork(b, a);
     b.updated = Date.now();
     d.tasks = d.tasks.filter((t) => t.id !== fromId);
   });
@@ -260,10 +284,11 @@ export async function send(address, text) {
   return r.code === 0 ? null : (r.stderr || r.stdout || "hc send failed").trim();
 }
 
-// The pull request of the task's branch: { number, url, state, review, failed: [names], pending }.
-export async function pullRequest(folder) {
+// The pull request of the folder's branch (or of `branch`): { number, url, state, createdAt, review,
+// failed: [names], pending }.
+export async function pullRequest(folder, branch = null) {
   try {
-    const r = await exec("gh", ["pr", "view", "--json", "number,url,state,reviewDecision,statusCheckRollup"], { cwd: folder });
+    const r = await exec("gh", ["pr", "view", ...(branch ? [branch] : []), "--json", "number,url,state,createdAt,reviewDecision,statusCheckRollup"], { cwd: folder });
     if (r.code !== 0) return null;
     const d = JSON.parse(r.stdout);
     const checks = d.statusCheckRollup ?? [];
@@ -272,6 +297,7 @@ export async function pullRequest(folder) {
       number: d.number,
       url: d.url,
       state: d.state,
+      createdAt: d.createdAt ?? null,
       review: d.reviewDecision,
       failed: checks.filter((c) => ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED"].includes(result(c))).map((c) => c.name ?? c.context),
       pending: checks.filter((c) => ["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED"].includes(result(c))).length,
@@ -305,7 +331,7 @@ export async function archive(store, task, { removeWorktree = false } = {}) {
   await store.update((d) => {
     const t = d.tasks.find((x) => x.id === task.id);
     if (!t) return false;
-    if (t.status !== "dropped") setStatus(t, "done");
+    if (t.status !== "done") setStatus(t, "done");
     t.archived = true;
     if (removeWorktree && !warning) { t.worktree = null; }
   });
@@ -342,13 +368,30 @@ export function removeRepo(data, repo, h) {
   }
 }
 
-// Puts a repository (or any folder) in a project (it leaves the one it was in), or in none.
-// Its tasks go with it: those of the project it left, and those in no project.
-export function moveRepo(data, repo, projectId, h) {
+// Puts a repository (or any folder) in a project (it leaves the one it was in), or in none:
+// before `target` (another of its folders), after it with `after`, else last. The same project
+// with a target reorders its folders. Its tasks go with it: those of the project it left, and
+// those in no project.
+export function moveRepo(data, repo, projectId, h, { target = null, after = false } = {}) {
   const same = (r) => tilde(untilde(r, h), h) === repo;
   const was = data.projects.find((p) => (p.folders ?? []).some(same))?.id ?? null;
   for (const p of data.projects) p.folders = (p.folders ?? []).filter((r) => !same(r));
   const p = projectId && data.projects.find((x) => x.id === projectId);
-  if (p) p.folders.push(repo);
+  if (p) {
+    const i = target ? p.folders.findIndex((r) => tilde(untilde(r, h), h) === target) : -1;
+    if (i < 0) p.folders.push(repo); else p.folders.splice(i + (after ? 1 : 0), 0, repo);
+  }
   for (const t of data.tasks) if (t.folder && same(t.folder) && (!t.project || t.project === was)) t.project = p ? p.id : null;
+}
+
+// Puts a task in another place of the outline: a folder (`folder`, in project `project` or none),
+// or a project's own level (`folder: null`). A task with a worktree stays where it is (its
+// checkout belongs to its folder).
+export function moveTaskTo(data, id, { project = null, folder = null }) {
+  const t = data.tasks.find((x) => x.id === id);
+  if (!t || t.worktree || (t.project === project && t.folder === folder)) return false;
+  t.project = project;
+  t.folder = folder;
+  t.updated = Date.now();
+  return true;
 }

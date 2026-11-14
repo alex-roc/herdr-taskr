@@ -1,5 +1,5 @@
 // taskr: a task manager over repos and coding agents.
-// One mod, several roles by props: { role: "sidebar" | "detail" | "status" | "board" },
+// One mod, several roles by props: { role: "sidebar" | "detail" | "status" | "board" | "stats" },
 // { dialog: ... } when opened as an overlay, or { pane, terminal } as a terminal's header. Data: data/taskr/tasks.json.
 
 import { View, div } from "gpui-kit";
@@ -11,16 +11,17 @@ import { icon, onScreen } from "./lib/ui.js";
 import { openDialog } from "./lib/open.js";
 import { RepoCache } from "./lib/git.js";
 import { AgentInfo } from "./lib/agentinfo.js";
-import { build } from "./lib/world.js";
+import { build, doingCount } from "./lib/world.js";
 import { Usage } from "./lib/usage.js";
 import { Titles } from "./lib/titles.js";
 import { sharedCache } from "./lib/cache.js";
 import { launch } from "./lib/actions.js";
-import { today, localDay, resetsLabel, untilde } from "./lib/util.js";
+import { today, localDay, resetsLabel, untilde, isDropped } from "./lib/util.js";
 import { Sidebar } from "./sidebar.js";
 import { Detail } from "./detail.js";
 import { Dialogs } from "./dialogs.js";
 import { Board } from "./board.js";
+import { Stats } from "./stats.js";
 import { Pane } from "./pane.js";
 
 export default class Taskr extends View {
@@ -44,6 +45,7 @@ export default class Taskr extends View {
     else if (this.role === "detail") this.initDetail(cx);
     else if (this.role === "dialog") this.initDialog(cx);
     else if (this.role === "board") this.initBoard(cx);
+    else if (this.role === "stats") this.initStats(cx);
     else if (this.role === "pane") this.initPane(cx);
     else {
       this.usage = new Usage();
@@ -130,9 +132,9 @@ export default class Taskr extends View {
     const w = this.world;
     const d = this.store.data;
     const open = w.tasks.filter((x) => x.open);
-    // Work you closed: a task with no plan is Done whenever its agent rests, so it doesn't count.
-    const doneToday = w.tasks.filter((x) => !x.t.auto && x.t.done_at && localDay(x.t.done_at) === today()).length;
-    const doing = open.filter((x) => x.t.status === "doing").length;
+    // Work you closed: a task with no plan is Done when its agent quits, and a dropped one wasn't done.
+    const doneToday = w.tasks.filter((x) => !x.t.auto && !isDropped(x.t) && x.t.done_at && localDay(x.t.done_at) === today()).length;
+    const doing = doingCount(w);
     const needs = open.filter((x) => x.top === "blocked").length + w.untracked.filter((u) => u.top === "blocked").length;
     const working = [...w.byTab.values()].flat().filter((e) => e.status === "working").length;
     const max = d.settings.wip;
@@ -184,10 +186,11 @@ export default class Taskr extends View {
     }
     if (this.role === "detail") return this.renderDetail(cx);
     if (this.role === "board") return this.renderBoard(cx);
+    if (this.role === "stats") return this.renderStats(cx);
     return this.renderStatus(cx);
   }
 }
 
 export const openSettings = () => openDialog("settings");
 
-Object.assign(Taskr.prototype, Sidebar, Detail, Dialogs, Board, Pane);
+Object.assign(Taskr.prototype, Sidebar, Detail, Dialogs, Board, Stats, Pane);

@@ -4,16 +4,16 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
 import { theme, run, shared, hc, home, window, focused } from "herdr";
 import { S } from "./strings.js";
-import { setStatus, kept } from "./lib/store.js";
+import { setStatus, kept, unpark } from "./lib/store.js";
 import { diffStat } from "./lib/git.js";
 import { send, pullRequest, openUrl } from "./lib/actions.js";
-import { RANK, duration, shortModel, kilo, base, untilde, STATUSES, issueLabel, isLater, laterLabel } from "./lib/util.js";
+import { RANK, duration, shortModel, kilo, base, untilde, CHOICES, issueLabel, isLater, laterLabel, stageOf } from "./lib/util.js";
 import { STATUS_ICON, statusIcon, statusColor, dueChip, agentMark, button, chip, programIcon, icon, onScreen, agentFor } from "./lib/ui.js";
 import { openDialog } from "./lib/open.js";
 
 const LOOK_EVERY = 15000; // screen and diff, while shown and the window is in front
 const PR_EVERY = 60000; // gh goes to the network
-const CLOCK_EVERY = 60000; // durations ("in Doing for 5m")
+const CLOCK_EVERY = 60000; // durations ("In progress for 5m")
 
 export const Detail = {
   initDetail(cx) {
@@ -129,9 +129,10 @@ export const Detail = {
     const det = this.det.id === task.id ? this.det : {};
     const due = dueChip(t, task.due);
 
-    // Status as a compact row of icons with the current one named.
-    const statusRow = h_flex().gap(3).flex_wrap().children(STATUSES.map((s) => {
-      const on = task.status === s;
+    // The stage as a compact row of icons with the current one named (Dropped last).
+    const stage = stageOf(task);
+    const statusRow = h_flex().gap(3).flex_wrap().children(CHOICES.map((s) => {
+      const on = stage === s;
       return h_flex().id(`ds-${s}`).px(on ? 7 : 5).h(24).rounded(6).items_center().gap(5).cursor_pointer()
         .text_size(11.5).bg(on ? statusColor(t, s) + "2a" : t.chrome).text_color(on ? statusColor(t, s) : t.dim)
         .hover((el) => el.bg(t.hover)).tooltip(S.statusLabel[s])
@@ -143,13 +144,19 @@ export const Detail = {
     const actions = h_flex().gap(6).flex_wrap()
       .when(!e && Boolean(last), (el) => el.child(button(t, "d-resume", S.resume, (_e, cx) => this.resume(cx, task),
         { primary: true, small: true, iconName: "rotate-ccw", tooltip: last ? S.resumeHint(last.app, duration(now - last.at)) : null })))
-      .when(!e, (el) => el.child(button(t, "d-launch", S.start, (_e, cx) => this.launch(cx, task, false), { primary: !last, small: true, iconName: "play" }))
-        .when(Boolean(task.folder) && !task.worktree && !this.repos.notGit(untilde(task.folder, home())), (el) => el.child(button(t, "d-launch-wt", S.startWorktree, (_e, cx) => this.launch(cx, task, true), { small: true, iconName: "git-fork", tooltip: S.startWorktreeHint }))))
+      // Start agent (with what this task was set to start with), or pick the agent, model, effort
+      // and a worktree first.
+      .when(!e, (el) => el.child(button(t, "d-launch", S.start, (_e, cx) => this.launch(cx, task, false), { primary: !last, small: true, iconName: "play",
+          tooltip: [task.agent, task.model, task.effort].some(Boolean) ? [task.agent, task.model, task.effort].filter(Boolean).join(" · ") : null }))
+        .child(button(t, "d-launch-with", `${S.startWith}…`, () => openDialog("start", { task: task.id }), { small: true, iconName: "settings", tooltip: S.startWithHint })))
       .when(Boolean(e), (el) => el.child(button(t, "d-focus", S.focusAgent, () => run("pane.focus", { pane: e.a.pane }), { primary: true, small: true, iconName: "arrow-right" })))
-      // Later: put it off, or bring it back now.
-      .when(isLater(task), (el) => el.child(button(t, "d-back", S.bringBack, (_e, cx) => this.upd(cx, task.id, (y) => { y.snooze = null; }), { small: true, iconName: "rotate-ccw" })))
-      .when(!isLater(task) && !["done", "dropped"].includes(task.status), (el) => el.child(button(t, "d-later", `${S.later}…`, () => openDialog("later", { task: task.id }), { small: true, iconName: "moon", tooltip: S.laterHint })))
+      // Forward through its stages by your hand: ready for review, then done.
+      .when(task.status === "doing", (el) => el.child(button(t, "d-review", S.readyForReview, (_e, cx) => this.upd(cx, task.id, (y) => setStatus(y, "review")), { small: true, iconName: "eye", tooltip: S.readyForReviewHint })))
       .when(task.status === "review", (el) => el.child(button(t, "d-done", S.markDone, (_e, cx) => this.upd(cx, task.id, (y) => setStatus(y, "done")), { small: true, iconName: "circle-check" })))
+      // Parked: bring it back now; else park it (Later, or waiting on someone).
+      .when(isLater(task), (el) => el.child(button(t, "d-back", S.bringBack, (_e, cx) => this.upd(cx, task.id, (y) => { unpark(y); }), { small: true, iconName: "rotate-ccw" })))
+      .when(!isLater(task) && task.status !== "done", (el) => el.child(button(t, "d-later", `${S.later}…`, () => openDialog("later", { task: task.id }), { small: true, iconName: "moon", tooltip: S.laterHint }))
+        .child(button(t, "d-waiting", S.waitingItem, () => openDialog("later", { task: task.id, waiting: true }), { small: true, iconName: "circle-pause", tooltip: S.waitingHint })))
       .when(Boolean(det.where), (el) => el.child(button(t, "d-changes", S.showChanges, () => { run("layout.select", { stack: "panel-body", child: "changes" }); run("layout.show", { id: "panel" }); }, { small: true, iconName: "git-pull-request" })));
 
     const pr = det.pr;
@@ -187,12 +194,12 @@ export const Detail = {
     const worked = (task.agent_ms ?? 0) + (e?.status === "working" && this.sinceOf(e) ? now - this.sinceOf(e) : 0);
     const body = v_flex().pt(12)
       .child(h_flex().gap(8).items_start()
-        .child(div().pt(2).child(statusIcon(t, task.status, 17)))
+        .child(div().pt(2).child(statusIcon(t, stage, 17)))
         .child(div().flex_1().min_w(0).text_size(15).font_semibold().child(task.title)))
       .child(h_flex().pt(6).gap(6).items_center().flex_wrap().text_size(11).text_color(t.dim)
         .when(Boolean(task.folder), (el) => el.child(div().child(base(task.folder))))
         .when(Boolean(due), (el) => el.child(due))
-        .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze)), t.dim)))
+        .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze), task.waiting_on), t.dim)))
         .when(Boolean(task.estimate), (el) => el.child(chip(t, S.estimateChip(task.estimate), t.dim)))
         .when(Boolean(task.issue?.url), (el) => el.child(div().id("d-issue").text_color(t.accent).cursor_pointer().hover((s) => s.opacity(0.8))
           .on_click(() => openUrl(task.issue.url)).child(issueLabel(task.issue)))))
@@ -210,7 +217,7 @@ export const Detail = {
       .when(Boolean(review), (el) => el.child(review))
       .when(Boolean(feedback), (el) => el.child(feedback))
       .child(this.section(t, S.time, v_flex().gap(3).text_size(11.5).text_color(t.muted)
-        .child(div().child(S.inStateFor(S.statusLabel[task.status], duration(now - lastChange))))
+        .child(div().child(S.inStateFor(S.statusLabel[stage], duration(now - lastChange))))
         .when(worked > 0, (el) => el.child(div().child(S.agentWorked(duration(worked)))))
         .child(div().child(S.createdAgo(duration(now - (task.created ?? now)))))))
       // Every status change: only when turned on in the settings ("in Review for 3m" is above).

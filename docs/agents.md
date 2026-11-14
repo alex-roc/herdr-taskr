@@ -15,17 +15,22 @@ layout reloads it within a second of any save, from any program.
 2. **New task**: `id` (any unique string, e.g. `agent-` + a timestamp) and `title` are enough.
    Usual extras: `project` (a project's `id`), `folder` (`~/path/to/folder`, a git repository or not), `status` (`inbox` for an
    idea, `next` for planned work), `due` (`YYYY-MM-DD`; words
-   like "tomorrow" are dropped), `next_step`, `notes`. To put a task off, set `snooze` to a day
-   (`YYYY-MM-DD`: it comes back then) or `"someday"`; `null` brings it back.
+   like "tomorrow" are dropped), `next_step`, `notes`. To park a task (it keeps its status), set
+   `snooze` to a day (`YYYY-MM-DD`: it comes back then), `"someday"` or `"agent"` (until its agent
+   works again); `null` brings it back. When it waits on someone, add `waiting_on` (`"Ana"`, or `""`)
+   and a day to follow up in `snooze`.
    **Order**: leave `rank` out and the task goes last in its lists; add `"priority": "high"` (or `1`)
    to put it first instead. The person orders the rest by dragging (`rank`, lower first): don't
    change another task's `rank`.
-3. **Status** is one of `inbox`, `next`, `doing`, `waiting`, `review`, `done`, `dropped`. When you
-   change it, also set `updated` (ms since the epoch) and append `{ "s": "<status>", "at": <ms> }` to
-   `history`, so the person sees when it moved. For `done`, set `done_at` too.
-4. **Don't mark the person's tasks done** unless they asked: put finished work in `review`.
-5. **Don't delete tasks.** Set `status` to `dropped` if one must go. Removing an entry from `tasks.json` is what the person's *Delete* does, and it also closes the task's tabs and the agent in them. Old `deleted: true` entries are dropped when the file is read.
-6. **Leave `tabs`, `sessions`, `agent_ms`, `worktree`, `branch` and `auto` alone** unless you know why: taskr keeps them.
+3. **Status** is the task's stage, one of `inbox`, `next`, `doing` (shown as *In progress*), `review`, `done`. A task closed
+   without being done is `done` with `"outcome": "dropped"`. When you change it, also set `updated`
+   (ms since the epoch) and append `{ "s": "<status>", "at": <ms> }` to `history` (`"dropped"` for a
+   dropped one), so the person sees when it moved. For `done`, set `done_at` too.
+4. **Don't mark the person's tasks done** unless they asked: when the whole task is finished, put it
+   in `review`. Finishing one turn of work isn't finishing the task.
+5. **Don't delete tasks.** Mark one dropped if it must go. Removing an entry from `tasks.json` is what the person's *Delete* does, and it also closes the task's tabs and the agent in them. Old `deleted: true` entries are dropped when the file is read.
+6. **Leave `tabs`, `sessions`, `agent_ms`, `work`, `worktree`, `branch`, `auto` and `freed` alone** unless you know why: taskr keeps them.
+   `agent`, `model` and `effort` say how the task's agent starts (the person's *Start with…*).
 7. Never put secrets in a task. The file is plain text in the person's home.
 
 ## Example (Node)
@@ -55,21 +60,24 @@ jq --arg id "agent-$now" --argjson now "$now" \
 
 ## Settings and old keys
 
-`settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `review_after` (minutes
-a task with no plan stays in To review: 15, 60, 240, 1440, or 0 for always) and
+`settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `park_after` (minutes
+a task with no plan stays in progress with its agent idle before it's parked until that agent works: 60,
+240, 1440, or 0 for never) and
 `pause_after` (days with nothing happening before a project pauses by itself: 1, 3, 7, 14, 30, or 0 for
 never). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave
 `paused_auto` and `active_at` to taskr.
 Projects list their `folders`; tasks have a `folder`. Files with the old `repos` and `repo` keys are
-still read and rewritten.
+still read and rewritten, and so are those from before 1.7: status `waiting` (now parked with
+`waiting_on`), status `dropped` (now `outcome`), `idle` (now `snooze: "agent"`) and `review_after`.
 
 ## Tasks with no plan
 
 `"auto": true` marks a task taskr made by itself for an agent that started in a tab with no task,
-titled after the agent. It has no plan yet: taskr moves it as its agent works (Doing, To review), marks it
-Idle (`"idle": true`) after `review_after`, and Done when its agent
-quits; its tab is then a plain terminal, and an agent started there again reopens the same task. Anything you change on it makes it the person's, and taskr removes `auto`. Don't set `auto`
-on a task you create.
+titled after the agent, in `doing`. It has no plan yet: it stays in progress while its agent is open,
+and when its agent quits it's Done (or stays in Review, if it was there) with `"freed": true`: its tab
+is then a plain terminal, and an agent started there again takes the same task back up. With
+`park_after` set, taskr parks it (`snooze: "agent"`) once its agent has been idle that long. Anything
+you change on it makes it the person's, and taskr removes `auto`. Don't set `auto` on a task you create.
 
 ## Showing a task
 

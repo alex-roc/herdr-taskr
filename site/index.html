@@ -43,16 +43,16 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
         </div>
       </div>
 
-      <div class="now" role="img" aria-label="taskr's Now list: one task whose agent asks a question, one ready for review, two agents working, and the next tasks in the order you set.">
+      <div class="now" role="img" aria-label="taskr's Now list: one task whose agent asks a question, one whose agent finished, two agents working, and the next tasks in the order you set.">
         <div class="now-tabs"><b>Now</b><i>Projects</i></div>
         <div class="sec c-blocked" data-in style="--i:0">Needs you <small>1</small></div>
         <div class="row" data-in style="--i:1"><span class="st blocked"></span><span class="t">Pick a database for sessions</span><span class="meta q">Sessions: Postgres or SQLite?</span></div>
-        <div class="sec c-done" data-in style="--i:2">To review <small>1</small></div>
+        <div class="sec c-done" data-in style="--i:2">Finished <small>1</small></div>
         <div class="row" data-in style="--i:3"><span class="st done"></span><span class="t">Rate-limit the public API</span><span class="meta">Acme › api · finished 3m ago</span></div>
         <div class="sec c-working" data-in style="--i:4">Working <small>2</small></div>
         <div class="row sel" data-in style="--i:5"><span class="st working"></span><span class="t">Add OAuth login</span><span class="chips"><span class="chip due">in 2d</span></span><span class="meta">Acme › web · working 14m</span></div>
         <div class="row" data-in style="--i:6"><span class="st working"></span><span class="t">Polish the README</span><span class="meta">Acme › web · working 6m</span></div>
-        <div class="sec c-text" data-in style="--i:7">Up next <small>3</small></div>
+        <div class="sec c-text" data-in style="--i:7">Next <small>3</small></div>
         <div class="row" data-in style="--i:8"><span class="st next"></span><span class="t">Fix the flaky checkout test</span><span class="chips"><span class="chip soon">today</span></span><span class="meta">Shop › checkout · → Reproduce with --repeat 50</span></div>
         <div class="row" data-in style="--i:9"><span class="st next"></span><span class="t">Write the onboarding guide</span><span class="chips"><span class="chip due">in 4d</span></span></div>
         <div class="row" data-in style="--i:10"><span class="st next"></span><span class="t">Upgrade to Node 24</span></div>
@@ -74,9 +74,9 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
 
       <div class="views">
         <div class="view side">
-          <img src="img/now-list.png" width="660" height="1536" alt="The Now list grouped into Needs you, To review, Working, Up next, Stalled, Inbox, and folded Later and Idle sections; agents started from a terminal are tasks in it too." loading="lazy">
+          <img src="img/now-list.png" width="660" height="1536" alt="The Now list: what the agents ask of you (Needs you, Finished, Working), then the stages (To review, In progress, Next, Inbox), and a folded Later section; agents started from a terminal are tasks in it too." loading="lazy">
           <div><h3>Now</h3>
-          <p>What moves work forward, in order. An agent's question sits in the row itself, so you can answer without hunting for the tab. Not now? Put a task off with <em>Later</em>: it waits out of the way and comes back on its day, with a reminder.</p></div>
+          <p>What moves work forward, in order: what your agents ask of you, then the work by stage. An agent's question sits in the row itself, so you can answer without hunting for the tab. Not now, or waiting on someone? Park it with <em>Later</em> or <em>Waiting on…</em>: it waits out of the way and comes back on its day, with a reminder.</p></div>
         </div>
         <div class="view side">
           <img src="img/projects.png" width="660" height="1609" alt="The Projects outline: Acme with a task and a terminal for the whole project above its folders acme-web and acme-api, each with branch, changes and tasks." loading="lazy">
@@ -85,9 +85,9 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
         </div>
 
         <div class="view wide">
-          <img src="img/board.png" width="2240" height="1230" alt="The board: Inbox, Next, Doing, Waiting, Review and Done columns with task cards." loading="lazy">
+          <img src="img/board.png" width="2240" height="1230" alt="The board: Inbox, Next, In progress, Review and Done columns with task cards." loading="lazy">
           <h3>Board</h3>
-          <p>One column per status, and a board per project in a tab of its own. Agents started from a terminal are cards too, with no plan. Drag a card to another column or into place among the others, and watch the Doing column count against the limit you set.</p>
+          <p>One column per stage, and a board per project in a tab of its own. Agents started from a terminal are cards too, with no plan. Drag a card to another column or into place among the others, and watch the In progress column count against the limit you set.</p>
         </div>
 
         <div class="view wide split">
@@ -99,7 +99,7 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
               <li><span class="dot" style="background:var(--blocked)"></span><span>The question the agent is waiting on, and the last lines of its screen.</span></li>
               <li><span class="dot" style="background:var(--working)"></span><span>Model, reasoning effort, context size and turn for Claude Code and Codex, plus sub-agents.</span></li>
               <li><span class="dot" style="background:var(--done)"></span><span>Changes in its folder, its pull request and CI checks, with one click to ask for a PR or send the failures back.</span></li>
-              <li><span class="dot" style="background:var(--waiting)"></span><span>A box to send the agent your next instruction, without leaving the list.</span></li>
+              <li><span class="dot" style="background:var(--amber)"></span><span>A box to send the agent your next instruction, without leaving the list.</span></li>
             </ul>
           </div>
         </div>
@@ -110,12 +110,12 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
   <section class="section" id="flow">
     <div class="wrap">
       <h2>Tasks follow their agents</h2>
-      <p class="intro">You plan; the agents' state moves the rest. No pipeline to set up, and nothing is marked done unless you do it.</p>
+      <p class="intro">You plan; an agent starting work moves the task along; you say when it's ready and when it's done. No pipeline to set up.</p>
       <ol class="track track-wrap">
         <li style="--c:var(--muted)"><b>Inbox</b><span>Ideas and imported GitHub issues.</span></li>
         <li style="--c:var(--text)"><b>Next</b><span><em>You</em> plan it: drag it into place, give it a due date.</span></li>
-        <li style="--c:var(--working)"><b>Doing</b><span>Moves here <em>by itself</em> when its agent starts working.</span></li>
-        <li style="--c:var(--done)"><b>Review</b><span>Moves here <em>by itself</em> when its agent stops.</span></li>
+        <li style="--c:var(--working)"><b>In progress</b><span>Moves here <em>by itself</em> when its agent starts working.</span></li>
+        <li style="--c:var(--done)"><b>Review</b><span><em>You</em> send it when the whole task is ready: a finished turn isn't a finished task.</span></li>
         <li style="--c:var(--ok)"><b>Done</b><span>Only <em>you</em> mark it done, after looking.</span></li>
       </ol>
     </div>
@@ -137,10 +137,10 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
           </div>
         </div>
         <div class="view wide split">
-          <img src="img/light-tasks.png" width="660" height="600" alt="Now: an agent started from a terminal, Try a search box for the docs, is a task with no plan in To review, next to planned tasks." loading="lazy">
+          <img src="img/light-tasks.png" width="660" height="600" alt="Now: an agent started from a terminal, Try a search box for the docs, is a task with no plan, next to planned tasks." loading="lazy">
           <div>
             <h3>Tasks or terminals, the same flow</h3>
-            <p>Started an agent in a terminal on a hunch? Every agent is a task: one with no plan, named after what the agent calls its work, moving from Doing to To review with it, on the list and the board. A while after it finishes (the time you set), it waits in Idle until its agent works again; it goes to Done when its agent quits or its tab closes (the tab is a plain terminal again), and Resume agent picks it up. Press <em>Plan it…</em> to give it a next step, notes or a due date, or change anything and it's yours. Plan with tasks when you want the details; work with terminals when you don't.</p>
+            <p>Started an agent in a terminal on a hunch? Every agent is a task: one with no plan, named after what the agent calls its work, in progress while its agent is open, on the list and the board. It goes to Done when its agent quits or its tab closes (the tab is a plain terminal again), and Resume agent picks it up. Many agents open? Park the idle ones until they work again, by hand or by themselves after a while. Press <em>Plan it…</em> to give it a next step, notes or a due date, or change anything and it's yours. Plan with tasks when you want the details; work with terminals when you don't.</p>
             <h3>Issues from GitHub and Linear</h3>
             <p>Import open GitHub issues of a folder's repository, or the Linear issues assigned to you, into the Inbox. Linear's most urgent come first, with their due dates, and the agent you start gets the issue in its first message.</p>
           </div>

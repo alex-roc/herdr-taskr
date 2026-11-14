@@ -5,36 +5,57 @@
 
 import { readTextFile, writeTextFile, appHome, watchFolder } from "herdr";
 import * as fs from "fs/promises";
-import { uid, STATUSES, parseDue, daysUntil, byRank, reorder } from "./util.js";
+import { uid, STATUSES, parseDue, daysUntil, byRank, reorder, localDay, stageOf } from "./util.js";
 import { S } from "../strings.js";
+import { WORK_DAYS } from "./stats.js";
 
 export const DIR = () => `${appHome()}/data/taskr`;
 // Where taskr kept its files when it was called tasker (before 1.6).
 const OLD_DIR = () => `${appHome()}/data/tasker`;
 export const FILE = () => `${DIR()}/tasks.json`;
 
-// `review_after`: minutes a task an agent started on its own (no plan) stays in To review once
-// its agent stops; 0 keeps it there.
-export const REVIEW_AFTER = [15, 60, 240, 1440, 0];
+// `park_after`: minutes a task with no plan stays in progress with its agent idle (seen, waiting
+// for you) before it's parked until that agent works again; 0: never (the default).
+export const PARK_AFTER = [0, 60, 240, 1440];
 // `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.
 export const PAUSE_AFTER = [0, 1, 3, 7, 14, 30];
-export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, review_after: 60, pause_after: 1, activity: false };
+export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, park_after: 0, pause_after: 1, activity: false };
 const EMPTY = () => ({ version: 1, settings: { ...DEFAULTS }, projects: [], tasks: [] });
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 const strOrNull = (v) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : null);
 const num = (v, d) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d);
 const list = (v) => (Array.isArray(v) ? v : []);
+const OPEN_BEFORE = ["inbox", "next", "doing", "waiting", "review"];
+// What a status change records: the stages, Dropped, and Waiting from files before 1.7.
+const HISTORY = [...STATUSES, "dropped", "waiting"];
 const PRIORITY = { high: 1, normal: 2, low: 3, p1: 1, p2: 2, p3: 3 };
+
+// A task's work per day as stats read it: days with two counts, the last WORK_DAYS.
+function cleanWork(w) {
+  if (!w || typeof w !== "object" || Array.isArray(w)) return null;
+  const days = Object.keys(w).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(w[d])).sort().slice(-WORK_DAYS);
+  if (!days.length) return null;
+  return Object.fromEntries(days.map((d) => [d, [Math.max(0, num(w[d][0], 0)), Math.max(0, Math.round(num(w[d][1], 0)))]]));
+}
 
 // One task as the views expect it, whatever was in the file.
 export function cleanTask(t) {
   const now = Date.now();
-  const status = STATUSES.includes(t.status) ? t.status : "inbox";
+  // Files from before 1.7: Dropped was a status (now Done with an outcome), and Waiting too (now
+  // parked, waiting on someone, back on its day: three days after it began waiting). A task with
+  // no plan that was Idle (its agent seen, waiting for you) is parked until its agent works, in progress.
+  const waited = t.status === "waiting";
+  const idled = t.auto === true && t.idle === true && OPEN_BEFORE.includes(t.status);
+  const status = waited || (idled && ["inbox", "next"].includes(t.status)) ? "doing" : t.status === "dropped" ? "done" : STATUSES.includes(t.status) ? t.status : "inbox";
+  const dropped = t.status === "dropped" || (status === "done" && t.outcome === "dropped");
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(str(v)) ? v : null);
+  const snooze = t.snooze === "someday" || t.snooze === "agent" ? t.snooze : day(t.snooze)
+    ?? (waited ? localDay(num(list(t.history).at(-1)?.at, num(t.updated, now)) + 3 * 86400000) : idled ? "agent" : null);
   const p = PRIORITY[str(t.priority).toLowerCase()] ?? num(t.priority, 2);
   // Only absolute dates: a word like "tomorrow" in the file would move every day.
   const due = /^\d{4}-\d{1,2}-\d{1,2}$/.test(str(t.due).trim()) ? parseDue(t.due) : null;
-  const { auto: _auto, idle: _idle, repo: _repo, ...rest } = t;
+  const { auto: _auto, idle: _idle, freed: _freed, repo: _repo, outcome: _outcome, waiting_on: _wo, agent: _ag, model: _mo, effort: _ef, work: _work, ...rest } = t;
   return {
     ...rest,
     id: str(t.id) || uid(),
@@ -43,6 +64,7 @@ export function cleanTask(t) {
     // Where it is: a folder (a git repository or not). `repo` is its name in files from before.
     folder: strOrNull(t.folder ?? t.repo),
     status,
+    ...(dropped ? { outcome: "dropped" } : {}),
     // Its place in every list, set by dragging (lower first). A task without one (written by
     // hand or by an agent, or from before) gets one on reading; `priority` only says where.
     rank: Number.isFinite(Number(t.rank)) && t.rank !== null && t.rank !== "" ? Number(t.rank) : null,
@@ -52,14 +74,17 @@ export function cleanTask(t) {
     next_step: str(t.next_step),
     notes: str(t.notes),
     issue: t.issue && typeof t.issue === "object" && t.issue.number != null ? { ...t.issue, url: str(t.issue.url) } : null,
-    // Made by taskr for an agent's tab (a light task): renamed after its agent, gone with its
-    // tab, until the person changes anything on it.
+    // Made by taskr for an agent's tab (a task with no plan): named after its agent, until the
+    // person changes anything on it. `freed`: its agent quit, and its tabs are terminals again.
     ...(t.auto === true ? { auto: true } : {}),
-    // A task with no plan whose agent you've seen and that waits for a word from you: Idle in Now.
-    ...(t.auto === true && t.idle === true ? { idle: true } : {}),
-    // Later: until a day, or "someday"; and the last day a due reminder went out.
-    snooze: t.snooze === "someday" || /^\d{4}-\d{2}-\d{2}$/.test(str(t.snooze)) ? t.snooze : null,
+    ...(t.auto === true && t.freed === true ? { freed: true } : {}),
+    // Parked: until a day, "someday" or "agent"; waiting on someone (a name, or "" for anyone);
+    // and the last day a due reminder went out.
+    snooze,
+    ...(snooze && (typeof t.waiting_on === "string" || waited) ? { waiting_on: str(t.waiting_on).trim() } : {}),
     reminded: /^\d{4}-\d{2}-\d{2}$/.test(str(t.reminded)) ? t.reminded : null,
+    // How its agent starts (Start with…): an agent of Herdr's menu, a model, a reasoning effort.
+    ...Object.fromEntries(["agent", "model", "effort"].filter((k) => strOrNull(t[k])).map((k) => [k, strOrNull(t[k]).trim()])),
     worktree: strOrNull(t.worktree),
     branch: strOrNull(t.branch),
     tabs: list(t.tabs).filter((x) => typeof x === "string"),
@@ -67,7 +92,9 @@ export function cleanTask(t) {
     updated: num(t.updated, num(t.created, now)),
     done_at: t.done_at == null ? null : num(t.done_at, null),
     agent_ms: num(t.agent_ms, 0),
-    history: list(t.history).filter((h) => h && STATUSES.includes(h.s)).map((h) => ({ s: h.s, at: num(h.at, now) })),
+    // Its agents' work per day (lib/stats.js): { "YYYY-MM-DD": [ms, turns] }.
+    ...(cleanWork(t.work) ? { work: cleanWork(t.work) } : {}),
+    history: list(t.history).filter((h) => h && HISTORY.includes(h.s)).map((h) => ({ s: h.s, at: num(h.at, now) })),
     // Agent conversations it had, newest last, to resume after a restart.
     sessions: list(t.sessions).filter((x) => x && ["claude", "codex"].includes(x.app) && typeof x.id === "string" && /^[\w-]+$/.test(x.id))
       .map((x) => ({ app: x.app, id: x.id, cwd: strOrNull(x.cwd), at: num(x.at, now) })).slice(-5),
@@ -132,7 +159,12 @@ export function parse(text) {
   settings.revive = settings.revive !== false;
   // Every agent's tab is a task now: the old switch is gone.
   delete settings.track;
-  settings.review_after = REVIEW_AFTER.includes(num(settings.review_after, -1)) ? num(settings.review_after) : DEFAULTS.review_after;
+  // Before 1.7 a task with no plan left To review after `review_after`: it's gone (tasks no
+  // longer go to Review when their agent stops), and parking idle agents is off unless chosen.
+  // Who had it set keeps the habit: Idle after an hour becomes parked after an hour.
+  if (d.settings?.park_after == null && num(d.settings?.review_after, 0) > 0) settings.park_after = PARK_AFTER.find((m) => m >= num(d.settings.review_after)) ?? 1440;
+  delete settings.review_after;
+  settings.park_after = PARK_AFTER.includes(num(settings.park_after, -1)) ? num(settings.park_after) : DEFAULTS.park_after;
   settings.pause_after = PAUSE_AFTER.includes(num(settings.pause_after, -1)) ? num(settings.pause_after) : DEFAULTS.pause_after;
   settings.activity = settings.activity === true; // the detail's list of status changes: off unless turned on
   const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
@@ -288,23 +320,41 @@ export function newTask(data, fields) {
   return t;
 }
 
-// The person changed something on a task: a light one becomes theirs (kept, named as it is).
+// The person changed something on a task: one with no plan becomes theirs (kept, named as it is).
 export function kept(t) {
   if (t) delete t.auto;
   return t;
 }
 
+// To a stage, or "dropped" (Done, not done). Started or closed: no longer parked.
 export function setStatus(t, status, now = Date.now()) {
-  if (!t || t.status === status) return false;
-  t.status = status;
+  if (!t || stageOf(t) === status) return false;
+  const drop = status === "dropped";
+  t.status = drop ? "done" : status;
+  if (drop) t.outcome = "dropped"; else delete t.outcome;
   delete t.idle;
   t.updated = now;
-  t.done_at = status === "done" ? now : status === "dropped" ? t.done_at : null;
-  // Started, finished or dropped: no longer put off.
-  if (["doing", "done", "dropped"].includes(status)) t.snooze = null;
+  t.done_at = t.status === "done" ? now : null;
+  if (["doing", "done"].includes(t.status)) unpark(t);
   (t.history ??= []).push({ s: status, at: now });
   if (t.history.length > 60) t.history.splice(0, t.history.length - 60);
   return true;
+}
+
+// Parks a task until a day, "someday" or "agent"; `who`: waiting on someone ("" for anyone).
+export function park(t, snooze, who = null) {
+  if (!t) return false;
+  t.snooze = snooze;
+  if (who == null) delete t.waiting_on; else t.waiting_on = String(who).trim();
+  return true;
+}
+
+export function unpark(t) {
+  if (!t) return false;
+  const was = t.snooze != null;
+  t.snooze = null;
+  delete t.waiting_on;
+  return was;
 }
 
 // Dragged onto `target` in a list showing `ids` in order: it takes that place there, the

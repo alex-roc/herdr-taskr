@@ -4,6 +4,7 @@
 import { place } from "./git.js";
 import { report, word } from "./agentinfo.js";
 import { tilde, untilde, base, OPEN, RANK, byRank, isLater, projectFolder, label } from "./util.js";
+import { nowSection } from "./flow.js";
 import { S } from "../strings.js";
 
 // The state an agent shows in its terminal's title when it reports none to Herdr: Claude
@@ -23,8 +24,8 @@ export const agentInFront = (t) => Boolean(t?.program?.agent) || /(^|\/)(claude|
 // terminal, or one that doesn't say, counts as still running its agent.
 export const shellOnly = (t) => Boolean(t?.foreground) && t.pid != null && t.foreground.pid === t.pid && !agentInFront(t);
 
-// A task with no plan, closed: its tabs are no longer its own.
-export const released = (t) => t?.auto === true && !OPEN.has(t.status);
+// A task with no plan whose agent quit: its tabs are no longer its own (terminals again).
+export const released = (t) => t?.auto === true && (t.freed === true || !OPEN.has(t.status));
 
 // Live sub-agents of `addr`, depth first.
 function kids(ts, addr, depth = 1) {
@@ -120,7 +121,9 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
   };
 
   for (const x of tasks) {
-    x.agents = x.tabs.flatMap((tab) => byTab.get(tab) ?? []);
+    // A task with no plan whose agent quit has none: an agent started again in its tab is taken up
+    // by adoption (actions.adopt), not seen here first.
+    x.agents = released(x.t) ? [] : x.tabs.flatMap((tab) => byTab.get(tab) ?? []);
     x.live = released(x.t) ? [] : x.tabs.filter((tab) => spaceOfTab.has(tab));
     x.top = x.agents.reduce((m, e) => ((RANK[e.top] ?? 0) > (RANK[m] ?? 0) ? e.top : m), null);
     x.project = x.t.project ?? (x.t.folder ? projectOfRepo.get(x.t.folder) ?? null : null);
@@ -151,40 +154,38 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
 // The ids of the projects put aside for now.
 export const pausedProjects = (data) => new Set(data.projects.filter((p) => p.paused).map((p) => p.id));
 
-// Lists for the Now view, most urgent first.
+// Now's lists, in the order things move forward: what the agents ask of you (needs you, finished,
+// working), then the stages (to review, doing, next, inbox), then what's parked. Each task once.
+// Work in progress, for the limit: tasks in progress (`doing`), not parked, whatever their agent does.
+export const doingCount = (w) => w.tasks.filter((x) => x.t.status === "doing" && !isLater(x.t)).length;
+
+export const NOW_SECTIONS = ["needs", "finished", "working", "review", "doing", "next", "inbox", "later"];
+
 export function nowView(w, data) {
-  const open = w.tasks.filter((x) => x.open);
-  const now = Date.now();
-  const staleMs = (data.settings.stale_days ?? 3) * 86400000;
-  const used = new Set();
-  const take = (list) => { list.forEach((x) => used.add(x.t.id)); return list; };
-  // A task with no plan whose agent you've seen, waiting for a word from you: Idle, apart.
-  const idle = (x) => x.t.auto === true && x.t.idle === true;
-  // A paused project's work is out of Now, but for an agent that needs you or works (taken first).
+  const lists = Object.fromEntries(NOW_SECTIONS.map((k) => [k, []]));
+  // A paused project's work is out of Now, but for an agent that needs you or works.
   const paused = pausedProjects(data);
-  const active = (x) => !paused.has(x.project);
-  // An agent asking or working shows even on a task put off; the rest of a Later task waits in Later.
-  const free = (x) => !used.has(x.t.id) && !isLater(x.t) && !idle(x) && active(x);
-  const needs = take(open.filter((x) => x.top === "blocked"));
-  // An agent that finished asks for a review only of work in progress: Next, Waiting or Inbox is your call.
-  const review = take(open.filter((x) => free(x) && (x.t.status === "review" || (x.top === "done" && x.t.status === "doing"))));
-  const working = take(open.filter((x) => !used.has(x.t.id) && x.top === "working"));
-  const stalled = take(open.filter((x) => free(x) && ["doing", "waiting"].includes(x.t.status) && now - (x.t.updated ?? 0) > staleMs));
-  const next = open.filter((x) => free(x) && ["next", "doing", "waiting"].includes(x.t.status)).sort((a, b) => byRank(a.t, b.t));
-  const inbox = open.filter((x) => free(x) && x.t.status === "inbox").sort((a, b) => byRank(a.t, b.t));
-  // Soonest back first; someday last.
-  const idling = open.filter((x) => !used.has(x.t.id) && idle(x) && !isLater(x.t) && active(x)).sort((a, b) => (b.t.history?.at(-1)?.at ?? 0) - (a.t.history?.at(-1)?.at ?? 0));
-  const later = open.filter((x) => !used.has(x.t.id) && isLater(x.t) && active(x))
-    .sort((a, b) => (a.t.snooze === "someday") - (b.t.snooze === "someday") || String(a.t.snooze).localeCompare(String(b.t.snooze)) || byRank(a.t, b.t));
+  for (const x of w.tasks) {
+    const at = nowSection(x);
+    if (!at || (paused.has(x.project) && !["blocked", "working"].includes(x.top))) continue;
+    lists[at].push(x);
+  }
+  for (const k of NOW_SECTIONS) if (k !== "later") lists[k].sort((a, b) => byRank(a.t, b.t));
+  // Finished: the turns you haven't seen first, then those waiting for a word from you.
+  lists.finished.sort((a, b) => (a.top === "done" ? 0 : 1) - (b.top === "done" ? 0 : 1));
+  // Soonest back first; "until its agent works", then someday, last.
+  const back = (t) => (t.snooze === "someday" ? 2 : t.snooze === "agent" ? 1 : 0);
+  lists.later.sort((a, b) => back(a.t) - back(b.t) || String(a.t.snooze).localeCompare(String(b.t.snooze)) || byRank(a.t, b.t));
   // Every agent is in a task (the sidebar makes one as it starts): terminals in no task are
   // shells, and those live in Projects, under their folder.
-  return { needs, review, working, stalled, next, inbox, idle: idling, later };
+  return lists;
 }
 
 // The Projects outline: project → repo → tasks (+ untracked tabs).
-export function projectTree(w, data, h, filters) {
-  // Open tasks, and finished ones whose terminals are still open (work you can still see).
-  const show = (x) => x.open || (!x.t.archived && x.live.length > 0) || (filters.done && !x.t.archived);
+export function projectTree(w, data, h) {
+  // Open tasks, and finished ones whose terminals are still open (work you can still see); every
+  // closed task is on the board's Done column.
+  const show = (x) => x.open || (!x.t.archived && x.live.length > 0);
   const repoNode = (key) => ({
     key,
     name: base(key),

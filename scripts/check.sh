@@ -28,9 +28,9 @@ check() {
 }
 
 check plain '{}'
-for role in sidebar detail status board; do check "role-$role" "{\"role\":\"$role\"}"; done
+for role in sidebar detail status board stats; do check "role-$role" "{\"role\":\"$role\"}"; done
 check pane-header '{"pane":"p1","terminal":"t1"}'
-for d in task project menu repo repo-project project-menu jump issues archive confirm-delete settings loose later; do
+for d in task project menu repo repo-project project-menu jump issues archive confirm-delete settings loose later start; do
   check "dialog-$d" "{\"dialog\":\"$d\",\"overlay\":\"ov\",\"repo\":\"~\"}"
 done
 exit $fail

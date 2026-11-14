@@ -6,15 +6,21 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
 import { S } from "./strings.js";
-import { setStatus, kept, moveTask, toTop } from "./lib/store.js";
+import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere } from "./lib/world.js";
-import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, moveRepo } from "./lib/actions.js";
-import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside } from "./lib/util.js";
+import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest } from "./lib/actions.js";
+import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
+import { onWorking, quitStage, parkDue, prReady, stale } from "./lib/flow.js";
+import { byDay, addWork } from "./lib/stats.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
 import { Revive } from "./lib/revive.js";
 import { openDialog } from "./lib/open.js";
 
+// How often tasks with their own branch are checked for a pull request (gh goes to the network).
+const PR_EVERY = 180000;
+// A press becomes a drag only if the pointer moves this soon after it.
+const DRAG_START_MS = 1500;
 // A task with no plan whose agent quit is closed this long after (time for an agent to come back
 // by itself after a restart, or for you to start it again in the same tab).
 const QUIT_MS = 30000;
@@ -27,7 +33,6 @@ const lead = (x) => [...(x.agents ?? [])].sort((a, b) => (RANK[b.top] ?? 0) - (R
 export const Sidebar = {
   initSidebar(cx) {
     this.folded = new Set(JSON.parse(localStorage.getItem("folded") ?? "[]"));
-    this.filters = JSON.parse(localStorage.getItem("filters") ?? '{"done":false}');
     // A list can show one view only ({ view: "now" | "projects" }): two of them, one above
     // the other, show both at once. Without it, the list has Now/Projects tabs.
     this.fixedView = ["now", "projects"].includes(props()?.view) ? props().view : null;
@@ -150,6 +155,7 @@ export const Sidebar = {
       case "details": return task && run("layout.show", { id: "taskr-detail" });
       case "jump": return openDialog("jump");
       case "board": return this.openBoard();
+      case "stats": return openStats();
       case "settings": return openDialog("settings");
       case "linear": return openDialog("issues", { source: "linear" });
       case "view": return this.switchView();
@@ -201,7 +207,8 @@ export const Sidebar = {
       }
       if (left.length !== pending.length || left.some((p, i) => p !== pending[i])) setShared("taskr.pending", left);
     }
-    // Agent time, per agent.
+    // Agent time, per agent, and per day for Stats (split at midnights); a turn when an agent
+    // that worked finishes or rests (a question isn't the end of a turn).
     const live = new Set();
     for (const x of w.tasks) {
       for (const e of x.agents) {
@@ -212,7 +219,14 @@ export const Sidebar = {
         if (e.status === "working" && since == null) workSince[addr] = now;
         if (e.status !== "working" && since != null) {
           const ms = Math.min(now - since, 8 * 3600000);
-          ops.push((d) => { const t = d.tasks.find((y) => y.id === x.t.id); if (t) t.agent_ms = (t.agent_ms ?? 0) + ms; });
+          const parts = byDay(now - ms, now);
+          const turn = ["done", "idle"].includes(e.status) ? 1 : 0;
+          ops.push((d) => {
+            const t = d.tasks.find((y) => y.id === x.t.id);
+            if (!t) return;
+            t.agent_ms = (t.agent_ms ?? 0) + ms;
+            parts.forEach(([day, part], i) => addWork(t, day, part, i === parts.length - 1 ? turn : 0));
+          });
           delete workSince[addr];
         }
       }
@@ -230,34 +244,36 @@ export const Sidebar = {
         });
       }
     }
-    // Task status follows its agents; never to done by itself.
+    // The turn never writes the stage, but for this: an agent starting work means the work is under
+    // way (lib/flow.js). A finished turn isn't a finished task: it stays where it is.
     const first = this.books.prevTop == null;
     const prev = this.books.prevTop ?? {};
     this.books.prevTop = {};
+    const byId = (d, id) => d.tasks.find((y) => y.id === id);
     for (const x of w.tasks) {
       const top = x.top;
       this.books.prevTop[x.t.id] = top;
-      if (first || prev[x.t.id] === top || x.t.archived || x.t.status === "dropped") continue;
-      const was = prev[x.t.id];
-      if (top === "working" && ["inbox", "next", "waiting", "review", "done"].includes(x.t.status)) ops.push((d) => setStatus(d.tasks.find((y) => y.id === x.t.id), "doing"));
-      if (was === "working" && (top === "done" || top === "idle") && x.t.status === "doing") {
-        ops.push((d) => setStatus(d.tasks.find((y) => y.id === x.t.id), "review"));
-      }
+      // Parked until its agent works: it does (or asks for you).
+      if (["working", "blocked"].includes(top) && x.t.snooze === "agent") ops.push((d) => { const y = byId(d, x.t.id); if (y?.snooze === "agent") unpark(y); });
+      if (first || prev[x.t.id] === top || x.t.archived) continue;
+      const to = top === "working" ? onWorking(x.t) : null;
+      if (to) ops.push((d) => setStatus(byId(d, x.t.id), to));
       // Herdr itself notifies when an agent needs you or finishes: no second toast here.
     }
     this.follow(cx, w, ops, now);
+    this.watchPRs(cx, w, now);
     this.pauseQuiet(w, ops, now);
     this.remind(w, ops, now);
     this.revive.step(cx, [...w.termBy.values()], this.info, this.store.data.settings.revive !== false);
     if (ops.length) cx.spawn(async () => this.store.update((d) => { for (const op of ops) op(d); }));
   },
 
-  // Every agent's tab is a task: one with no plan (`auto`) from its start, named after its
-  // agent, until the person changes anything on it. Planned or not, a task moves with its agent
-  // (keepBooks); one with no plan is also looked after for you: after `review_after` minutes in To
-  // review (looking at it doesn't count: you may be working with it), it goes to Idle while its agent stays open, back in
-  // Doing when it works again; Done once its agent quits or its tab closes (resumable from there). After a restart the agent comes back by itself (lib/revive.js)
-  // before that, and the task goes on.
+  // Every agent's tab is a task: one with no plan (`auto`) from its start, in progress, named after
+  // its agent until the person changes anything on it. Nothing else says when such a task is done,
+  // so its agent quitting (or its tab closing) does: Done, or still in Review if it was there, and
+  // its tabs are terminals again (resumable from there). After a restart the agent comes back by
+  // itself (lib/revive.js) before that, and the task goes on. With `park_after` set, one whose agent
+  // stays idle that long is parked until its agent works again.
   follow(cx, w, ops, now) {
     const adopting = (this.books.adopting ??= {});
     for (const u of w.untracked) {
@@ -267,11 +283,15 @@ export const Sidebar = {
     }
     const gone = (this.books.gone ??= {});
     const anySpace = w.spaces.length > 0;
-    const wait = (this.store.data.settings.review_after ?? 60) * 60000;
-    const close = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status)) setStatus(y, "done", now); });
-    const rest = (id) => ops.push((d) => { const y = d.tasks.find((z) => z.id === id); if (y?.auto && OPEN.has(y.status) && !y.idle) y.idle = true; });
+    const parkAfter = this.store.data.settings.park_after ?? 0;
+    const close = (id) => ops.push((d) => {
+      const y = d.tasks.find((z) => z.id === id);
+      if (!y?.auto || !OPEN.has(y.status) || y.freed) return;
+      setStatus(y, quitStage(y), now);
+      y.freed = true;
+    });
     for (const x of w.tasks) {
-      if (!x.t.auto || !x.open) { delete gone[x.t.id]; continue; }
+      if (!x.t.auto || !x.open || x.t.freed) { delete gone[x.t.id]; continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });
       // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
@@ -283,11 +303,34 @@ export const Sidebar = {
         continue;
       }
       delete gone[x.t.id];
-      // Its agent stopped, and it's waited longer than asked.
-      if (["working", "blocked"].includes(x.top) || x.t.idle || isLater(x.t)) continue;
-      const since = (x.t.history ?? []).at(-1)?.at ?? x.t.updated ?? now;
-      if (wait > 0 && now - since > wait) rest(x.t.id);
+      if (parkDue(x.t, x.top, this.sinceOf(lead(x)), now, parkAfter)) {
+        ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !isLater(y)) park(y, "agent"); });
+      }
     }
+  },
+
+  // A pull request opened for a task with its own branch (a worktree taskr made) moves it to Review:
+  // a shortcut for those who work with PRs. Looked for every few minutes, with the window in front,
+  // and only for such tasks in progress; the rest go to Review by your hand (or an agent's).
+  watchPRs(cx, w, now) {
+    if (!window()?.active || this.books.prBusy || now - (this.books.prAt ?? 0) < PR_EVERY) return;
+    const list = w.tasks.filter((x) => x.t.status === "doing" && x.t.branch && x.t.folder && !x.folderOn);
+    if (!list.length) return;
+    this.books.prAt = now;
+    this.books.prBusy = true;
+    cx.spawn(async () => {
+      try {
+        const ready = [];
+        for (const x of list) {
+          const pr = await pullRequest(untilde(x.t.folder, home()), x.t.branch);
+          if (prReady(x.t, pr)) ready.push(x.t.id);
+        }
+        // Still in progress by the time it's written (you may have moved it meanwhile).
+        if (ready.length) await this.store.update((d) => { for (const id of ready) { const y = d.tasks.find((z) => z.id === id); if (y?.status === "doing") setStatus(y, "review"); } });
+      } finally {
+        this.books.prBusy = false;
+      }
+    });
   },
 
   // Projects with nothing going on for `pause_after` days pause by themselves, and come back by
@@ -314,7 +357,7 @@ export const Sidebar = {
     }
   },
 
-  // Tasks put off whose day came: back in Now, with a notification. And once a day,
+  // Parked tasks whose day came: back in Now, with a notification. And once a day,
   // what's due or late. `books.sent` keeps two lists on screen from sending twice.
   remind(w, ops, now) {
     const day = today();
@@ -326,10 +369,17 @@ export const Sidebar = {
       notify({ title, body: tasks.map((t) => t.title).slice(0, 4).join(" · ") + (tasks.length > 4 ? " …" : ""), level,
         action: tasks.length === 1 ? { name: `taskr.select:${tasks[0].id}` } : { name: "taskr.focus" } });
     };
-    const back = pick(w.tasks.filter((x) => x.open && !x.t.archived && x.t.snooze && x.t.snooze !== "someday" && x.t.snooze <= day && sent[`back:${x.t.id}`] !== x.t.snooze));
+    const back = pick(w.tasks.filter((x) => x.open && !x.t.archived && /^\d{4}-/.test(x.t.snooze ?? "") && x.t.snooze <= day && sent[`back:${x.t.id}`] !== x.t.snooze));
     for (const t of back) {
       sent[`back:${t.id}`] = t.snooze;
-      ops.push((d) => { const y = d.tasks.find((z) => z.id === t.id); if (y && y.snooze === t.snooze) { y.snooze = null; y.updated = now; } });
+      // Back from waiting on someone: its next step is to follow up (unless it has one).
+      ops.push((d) => {
+        const y = d.tasks.find((z) => z.id === t.id);
+        if (!y || y.snooze !== t.snooze) return;
+        if (y.waiting_on != null && !y.next_step) y.next_step = S.followUp(y.waiting_on);
+        unpark(y);
+        y.updated = now;
+      });
     }
     tell(S.backTitle(back.length), back);
     // One notification per task a day: one back from Later today isn't told again as due.
@@ -359,23 +409,76 @@ export const Sidebar = {
     cx.notify();
   },
 
-  // A repository (or folder) dropped on a project's header: it moves there ("No project": out).
-  dropRepo(cx, projectId) {
+  // A folder dropped in the outline: on a project's header it goes last in that project ("No
+  // project": out of every project); on another folder it takes that place (`target`, `after`),
+  // in that folder's project, which reorders the folders of its own.
+  dropRepo(cx, projectId, { target = null, after = false } = {}) {
     const from = this.dragRepo;
-    this.dragRepo = null;
-    this.dragOver = null;
-    if (!from || from.project === projectId) return cx.notify();
+    this.endDrag();
+    if (!from || (from.project === projectId && (!target || target === from.key))) return cx.notify();
     cx.stop_propagation();
-    cx.spawn(async () => this.store.update((d) => moveRepo(d, from.key, projectId, home())));
+    cx.spawn(async () => this.store.update((d) => moveRepo(d, from.key, projectId, home(), { target, after })));
     cx.notify();
   },
 
-  // A task dropped on another row: it takes that one's place in the list (`ids`, in order).
-  // From Inbox onto Up next (or back) it changes list too.
-  dropTask(cx, target, ids) {
+  // A task dropped on a folder (or a project's header): it moves there, as the outline's nodes do.
+  dropTaskInto(cx, place) {
     const from = this.dragTask;
-    this.dragTask = null;
+    this.endDrag();
+    if (!from) return cx.notify();
+    cx.stop_propagation();
+    cx.spawn(async () => this.store.update((d) => { const t = d.tasks.find((y) => y.id === from); if (!t) return false; kept(t); return moveTaskTo(d, from, place); }));
+    cx.notify();
+  },
+
+  // A row pressed: it becomes a drag only once the pointer moves a few pixels soon after (a plain
+  // click never does, and a press whose release went elsewhere, to a menu that opened, expires).
+  press(kind, value, e) {
+    this.pressed = { kind, value, x: e?.position?.x, y: e?.position?.y, at: Date.now() };
     this.dragOver = null;
+  },
+
+  // Called on every move over the list: turns a press into a drag. True while dragging.
+  moved(e) {
+    const p = this.pressed;
+    if (p) {
+      const far = p.x == null || e?.position == null || Math.hypot(e.position.x - p.x, e.position.y - p.y) >= 4;
+      if (Date.now() - p.at > DRAG_START_MS) this.pressed = null;
+      else if (far) {
+        this.pressed = null;
+        if (p.kind === "task") this.dragTask = p.value;
+        else if (p.kind === "repo") this.dragRepo = p.value;
+        else if (p.kind === "project") this.dragProject = p.value;
+      }
+    }
+    return Boolean(this.dragTask || this.dragRepo || this.dragProject);
+  },
+
+  // Off the list: no drag (one left there can't land anywhere), and its click doesn't count either.
+  cancelDrag() {
+    this.pressed = null;
+    this.dragTask = null;
+    this.dragRepo = null;
+    this.dragProject = null;
+    this.dragOver = null;
+  },
+
+  endDrag() {
+    // A row dragged and let go: its click (fold, select) doesn't count.
+    if (this.dragOver) this.wasDrag = true;
+    this.pressed = null;
+    this.dragTask = null;
+    this.dragRepo = null;
+    this.dragProject = null;
+    this.dragOver = null;
+  },
+
+  // A task dropped on another row: it takes that one's place in the list (`ids`, in order).
+  // From Inbox onto Next (or back) it changes list too; in Projects, onto a task in another folder
+  // or project (`place`), it moves there.
+  dropTask(cx, target, ids, place = null) {
+    const from = this.dragTask;
+    this.endDrag();
     if (!from || from === target) return;
     cx.stop_propagation();
     const plan = ["inbox", "next"];
@@ -383,39 +486,55 @@ export const Sidebar = {
       const t = d.tasks.find((y) => y.id === from), to = d.tasks.find((y) => y.id === target);
       if (!t || !to) return false;
       kept(t);
-      if (t.status !== to.status && plan.includes(t.status) && plan.includes(to.status)) setStatus(t, to.status);
+      if (place && !ids.includes(from)) moveTaskTo(d, from, place);
+      else if (t.status !== to.status && plan.includes(t.status) && plan.includes(to.status)) setStatus(t, to.status);
       t.updated = Date.now();
       return moveTask(d, from, ids, target);
     }));
     cx.notify();
   },
 
-  // Where a row being dragged may land: in its own list, or between Inbox and Up next.
-  canDrop(task, ids) {
+  // Where a row being dragged may land: in its own list, between Inbox and Next, or (Projects) in
+  // another folder or project, unless it has a worktree (its checkout belongs to its folder).
+  canDrop(task, ids, place = null) {
     const from = this.dragTask && this.store.task(this.dragTask);
     if (!from || from.id === task.id) return false;
-    return ids.includes(from.id) || (["inbox", "next"].includes(from.status) && ["inbox", "next"].includes(task.status));
+    if (ids.includes(from.id)) return true;
+    if (place) return !from.worktree;
+    return ["inbox", "next"].includes(from.status) && ["inbox", "next"].includes(task.status);
+  },
+
+  // Whether a click is the end of a drag (then it doesn't fold or select).
+  clickAfterDrag() {
+    const was = this.wasDrag;
+    this.wasDrag = false;
+    return was;
   },
 
   // ── Rows ────────────────────────────────────────────────────────────────
   // `ids`: the list it's in, in order, when it can be dragged to another place in it.
-  taskRow(t, x, { showWhere = false, depth = 0, ids = null } = {}) {
+  // `place`: in Projects, where it is in the outline ({ project, folder, row, drop }: `row` is the
+  // id of the node it's in, lit while a folder is held over this row, and `drop` lets it go there).
+  taskRow(t, x, { showWhere = false, depth = 0, ids = null, place = null } = {}) {
     const task = x.t;
     const e = lead(x);
     const selected = shared("taskr.selected") === task.id;
     const blocked = e?.top === "blocked";
     const msg = blocked ? (e.report?.msg ?? "").replace(/^answer:\s*/i, "") : null;
     const since = this.sinceOf(e);
-    const later = isLater(task) ? S.laterUntil(laterLabel(task.snooze)) : null;
+    const later = isLater(task) ? S.laterUntil(laterLabel(task.snooze), task.waiting_on) : null;
     // Where it is (Projects' outline already says it), then how long its agent has been as it is.
     // Model, effort and context live in the terminal's header and the detail.
     const where = showWhere ? taskWhere(this.store.data, x, home()) : null;
-    const tail = (e ? agentFor(e.top, since) : null) ?? later ?? (task.next_step ? `→ ${task.next_step}` : null);
+    // In progress for days with nothing moving (no change, no agent at work): its time, in yellow.
+    const last = Math.max(task.updated ?? 0, task.history?.at(-1)?.at ?? 0, (e && since) || 0);
+    const old = !msg && stale(task, x.top, last, Date.now(), (this.store.data.settings.stale_days ?? 3) * 86400000);
+    const tail = old ? S.inProgressFor(duration(Date.now() - last)) : (e ? agentFor(e.top, since) : null) ?? later ?? (task.next_step ? `→ ${task.next_step}` : null);
     const second = msg || [where, tail].filter(Boolean).join(" · ") || null;
-    const done = task.status === "done" || task.status === "dropped";
+    const done = task.status === "done";
     const due = done ? null : dueChip(t, task.due);
     // Another row held over this one: a line shows where it lands (below when it comes from above).
-    const target = Boolean(ids) && this.dragOver === task.id && this.canDrop(task, ids);
+    const target = Boolean(ids) && this.dragOver === task.id && this.canDrop(task, ids, place);
     const below = target && ids.indexOf(this.dragTask) >= 0 && ids.indexOf(this.dragTask) < ids.indexOf(task.id);
     return v_flex().id(`t-${task.id}`).pl(8 + depth * 14).pr(6).py(4).flex_none().rounded(8).gap(1)
       .when(selected, (el) => el.bg(t.selected))
@@ -423,12 +542,21 @@ export const Sidebar = {
       .when(target && !below, (el) => el.rounded_none().border_t(2).border_color(t.accent))
       .when(target && below, (el) => el.rounded_none().border_b(2).border_color(t.accent))
       .when(Boolean(ids), (el) => el
-        .on_mouse_down("left", () => { this.dragTask = task.id; this.dragOver = null; })
-        .on_mouse_move((_e, cx) => { if (this.dragTask && this.dragOver !== task.id) { this.dragOver = task.id; cx.notify(); } })
-        .on_mouse_up("left", (_e, cx) => { if (this.canDrop(task, ids)) this.dropTask(cx, task.id, ids); }))
+        .on_mouse_down("left", (e) => this.press("task", task.id, e))
+        .on_mouse_move((e, cx) => {
+          this.moved(e);
+          // A folder held over a task: the node it would land in is lit.
+          const over = this.dragTask ? task.id : this.dragRepo && place ? place.row : null;
+          if (over && this.dragOver !== over) { this.dragOver = over; cx.notify(); }
+        })
+        .on_mouse_up("left", (_e, cx) => {
+          if (this.dragRepo && place) place.drop(cx);
+          else if (this.canDrop(task, ids, place)) this.dropTask(cx, task.id, ids, place);
+        }))
       .cursor_pointer().hover((s) => s.bg(t.hover))
       // Shows the task and brings its tab to the front; a task with none keeps the keys here.
       .on_click((_e, cx) => {
+        if (this.clickAfterDrag()) return;
         this.select(task.id);
         const pane = this.paneOf(x);
         if (pane) run("pane.focus", { pane }); else this.handle.focus();
@@ -441,7 +569,7 @@ export const Sidebar = {
         .child(div().flex_1().min_w(0).truncate().text_color(aside(task, x.top) ? t.dim : t.foreground).when(e?.top === "done", (el) => el.font_semibold()).child(task.title))
         .when(this.hovered === task.id && !e && !done, (el) => el.child(iconButton(t, `go-${task.id}`, "play", S.startHint, (_e, cx) => this.launch(cx, task, false))))
         .when(Boolean(due), (el) => el.child(due)))
-      .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : t.dim).child(second)));
+      .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : old ? t.ansi3 : t.dim).child(second)));
   },
 
   untrackedRow(t, u, depth = 0, showWhere = false) {
@@ -472,27 +600,27 @@ export const Sidebar = {
     const rows = [];
     const order = [];
     // `shut`: folded until opened (Later: out of the way is the point).
-    const section = (id, label, list, color, { max = 99, shut = false } = {}) => {
+    const section = (id, label, list, color, { max = 99, shut = false, count = null } = {}) => {
       if (!list.length) return;
       const key = shut ? `${id}:open` : id;
       const open = shut ? this.folded.has(key) : !this.folded.has(key);
-      rows.push(sectionHeader(t, `sec-${id}`, label, list.length, color, open, (cx) => this.fold(key, cx)));
+      rows.push(sectionHeader(t, `sec-${id}`, label, count ?? list.length, color, open, (cx) => this.fold(key, cx)));
       if (!open) return;
-      // Later keeps its order by day; every other list can be reordered by dragging.
+      // Later keeps its order by when each comes back; every other list can be reordered by dragging.
       const ids = shut ? null : list.map((x) => x.t.id);
       for (const x of list.slice(0, max)) { rows.push(this.taskRow(t, x, { showWhere: true, ids })); order.push(x.t.id); }
       if (list.length > max) rows.push(div().id(`more-${id}`).pl(31).h(22).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => setShared("taskr.view", "projects")).child(S.more(list.length - max)));
     };
+    // What the agents ask of you, then the stages, then what's parked (folded).
     section("needs", S.needsYou, v.needs, t.blocked);
-    section("review", S.toReview, v.review, t.done);
+    section("finished", S.finished, v.finished, t.done);
     section("working", S.working, v.working, t.working);
+    section("review", S.toReview, v.review, t.done);
+    section("doing", S.doing, v.doing, t.working);
     section("next", S.nextUp, v.next, t.foreground, { max: 7 });
-    section("stalled", S.stalled, v.stalled, t.ansi3);
     section("inbox", S.inbox, v.inbox, t.dim, { max: 5 });
     section("later", S.later, v.later, t.dim, { shut: true });
-    // Last: agents you've seen, waiting for a word from you.
-    section("idle", S.idle, v.idle, t.dim, { shut: true });
     this.order = order;
     if (!rows.length) rows.push(div().px(12).pt(12).text_size(12).text_color(t.dim).child(S.emptyNow));
     return rows;
@@ -500,11 +628,27 @@ export const Sidebar = {
 
   // ── Projects ────────────────────────────────────────────────────────────
   projectRows(t, w) {
-    const tree = projectTree(w, this.store.data, home(), this.filters);
+    const tree = projectTree(w, this.store.data, home());
     const rows = [];
     const order = [];
-    const repoRows = (proj, r) => {
-      const id = `r:${proj?.id ?? "-"}:${r.key}`;
+    const repoRows = (proj, r, keys) => {
+      const pid = proj?.id ?? null;
+      const id = `r:${pid ?? "-"}:${r.key}`;
+      // A folder held over this one: a line shows where it lands (below when it comes from above
+      // in the same project); a task held over it: it's lit, the task would go in.
+      const held = this.dragOver === id;
+      const repoOver = held && Boolean(this.dragRepo) && this.dragRepo.key !== r.key;
+      const from = repoOver && this.dragRepo.project === pid ? keys.indexOf(this.dragRepo.key) : -1;
+      const after = repoOver && from >= 0 && from < keys.indexOf(r.key);
+      const taskOver = held && Boolean(this.dragTask) && !this.store.task(this.dragTask)?.worktree;
+      // Lifted: this folder, and what's in it, while it's dragged.
+      const lifted = this.dragRepo?.key === r.key && Boolean(this.dragOver);
+      // Let go on it (or on a task in it, for a folder being dragged).
+      const drop = (cx) => {
+        if (this.dragRepo) this.dropRepo(cx, pid, { target: r.key, after: this.dragRepo.project === pid && keys.indexOf(this.dragRepo.key) >= 0 && keys.indexOf(this.dragRepo.key) < keys.indexOf(r.key) });
+        else if (this.dragTask && !this.store.task(this.dragTask)?.worktree) this.dropTaskInto(cx, { project: pid, folder: r.key });
+        else this.endDrag();
+      };
       const open = !this.folded.has(id);
       const sp = r.spaces[0];
       const st = sp?.repo;
@@ -513,11 +657,17 @@ export const Sidebar = {
       const top = [...r.tasks.map((x) => x.top), ...r.untracked.map((u) => u.top)].reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
       rows.push(h_flex().id(id).pl(18).pr(6).h(26).flex_none().gap(6).items_center().rounded(6).cursor_pointer()
         .hover((s) => s.bg(t.hover))
-        .on_click((_e, cx) => this.fold(id, cx))
-        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openDialog("repo", { repo: r.key, project: proj?.id ?? null }); })
-        // Dragged onto a project's header, it moves to that project.
-        .on_mouse_down("left", () => { this.dragRepo = { key: r.key, project: proj?.id ?? null }; this.dragOver = null; })
-        .when(this.dragRepo?.key === r.key && Boolean(this.dragOver), (el) => el.opacity(0.45))
+        .on_click((_e, cx) => { if (!this.clickAfterDrag()) this.fold(id, cx); })
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openDialog("repo", { repo: r.key, project: pid }); })
+        // Dragged onto another folder it takes that place (in its project); onto a project's
+        // header, it goes last in that project.
+        .on_mouse_down("left", (e) => this.press("repo", { key: r.key, project: pid }, e))
+        .on_mouse_move((e, cx) => { if (this.moved(e) && (this.dragRepo || this.dragTask) && this.dragOver !== id) { this.dragOver = id; cx.notify(); } })
+        .on_mouse_up("left", (_e, cx) => drop(cx))
+        .when(lifted, (el) => el.opacity(0.45))
+        .when(repoOver && !after, (el) => el.rounded_none().border_t(2).border_color(t.accent))
+        .when(repoOver && after, (el) => el.rounded_none().border_b(2).border_color(t.accent))
+        .when(taskOver, (el) => el.bg(t.selected))
         .child(svg(CHEVRON(open)).size(10).flex_none().text_color(t.dim))
         .child(icon("folder", 12, live ? t.muted : t.dim))
         .child(div().flex_none().max_w(150).truncate().text_color(live ? t.foreground : t.dim).child(r.name))
@@ -527,13 +677,14 @@ export const Sidebar = {
         .when(!live, (el) => el.child(div().id(`no-${id}`).text_size(10.5).text_color(t.dim).tooltip(S.notOpenHint).child(S.notOpen)))
         .child(div().flex_1())
         .when(!open && Boolean(top), (el) => el.child(agentMark(t, top)))
-        .child(iconButton(t, `term-${id}`, "square-terminal", S.newTerminal, () => openHere(r.key)))
         .child(iconButton(t, `add-${id}`, "plus", S.newTask, () => this.openTaskForm({ repo: r.key, project: proj?.id ?? null })))
+        .child(iconButton(t, `term-${id}`, "square-terminal", S.newTerminal, () => openHere(r.key)))
         .child(iconButton(t, `more-${id}`, "ellipsis", S.repoMenu, () => openDialog("repo", { repo: r.key, project: proj?.id ?? null }))));
       if (!open) return;
       const ids = r.tasks.map((x) => x.t.id);
-      for (const x of r.tasks) { rows.push(this.taskRow(t, x, { depth: 2, ids })); order.push(x.t.id); }
-      for (const u of r.untracked) rows.push(this.untrackedRow(t, u, 2));
+      const place = { project: pid, folder: r.key, row: id, drop };
+      for (const x of r.tasks) { rows.push(this.taskRow(t, x, { depth: 2, ids, place }).when(lifted, (el) => el.opacity(0.45))); order.push(x.t.id); }
+      for (const u of r.untracked) rows.push(this.untrackedRow(t, u, 2).when(lifted, (el) => el.opacity(0.45)));
     };
     const projectHeader = (x) => {
       const p = x.p;
@@ -545,40 +696,52 @@ export const Sidebar = {
       const order = this.store.data.projects.map((y) => y.id);
       const dragging = Boolean(p) && this.dragProject && this.dragOver === p.id && this.dragProject !== p.id;
       const below = dragging && order.indexOf(this.dragProject) < order.indexOf(p.id);
-      // A repository dragged over it: the project it would go to is lit.
+      // A folder dragged over it: the project it would go to is lit (last in it); a task too (to the
+      // project's own level, above its folders).
       const target = p?.id ?? null;
-      const repoOver = Boolean(this.dragRepo) && this.dragOver === `p:${target ?? "-"}` && this.dragRepo.project !== target;
-      rows.push(h_flex().id(id).px(8).pt(8).h(32).flex_none().gap(7).items_center().cursor_pointer()
+      const repoOver = Boolean(this.dragRepo) && this.dragOver === id && this.dragRepo.project !== target;
+      const taskOver = Boolean(p) && Boolean(this.dragTask) && this.dragOver === id && !this.store.task(this.dragTask)?.worktree;
+      const drop = (cx) => {
+        if (this.dragRepo) this.dropRepo(cx, target);
+        else if (this.dragTask && p && !this.store.task(this.dragTask)?.worktree) this.dropTaskInto(cx, { project: p.id, folder: null });
+        else this.endDrag();
+      };
+      rows.push(h_flex().id(id).mt(6).px(8).h(28).flex_none().gap(7).items_center().rounded(6).cursor_pointer()
+        .hover((s) => s.bg(t.hover))
         .when(Boolean(p) && this.dragProject === p.id && Boolean(this.dragOver) && this.dragOver !== p.id, (el) => el.opacity(0.45))
-        .when(dragging && !below, (el) => el.border_t(2).border_color(t.accent))
-        .when(dragging && below, (el) => el.border_b(2).border_color(t.accent))
-        .when(repoOver, (el) => el.rounded(6).bg(t.selected))
-        .on_click((_e, cx) => this.fold(id, cx))
+        .when(dragging && !below, (el) => el.rounded_none().border_t(2).border_color(t.accent))
+        .when(dragging && below, (el) => el.rounded_none().border_b(2).border_color(t.accent))
+        .when(repoOver || taskOver, (el) => el.bg(t.selected))
+        .on_click((_e, cx) => { if (!this.clickAfterDrag()) this.fold(id, cx); })
         .on_mouse_down("right", (_e, cx) => { if (p) { cx.stop_propagation(); openDialog("project-menu", { project: p.id }); } })
-        .when(Boolean(p), (el) => el.on_mouse_down("left", () => { this.dragProject = p.id; this.dragOver = null; }))
-        // Over it: a project being dragged (to reorder) or a repository (to move it here).
-        .on_mouse_move((_e, cx) => {
-          const over = this.dragRepo ? id : this.dragProject && p ? p.id : null;
+        .when(Boolean(p), (el) => el.on_mouse_down("left", (e) => this.press("project", p.id, e)))
+        // Over it: a project being dragged (to reorder), a folder or a task (to move it here).
+        .on_mouse_move((e, cx) => {
+          this.moved(e);
+          const over = this.dragRepo || (this.dragTask && p) ? id : this.dragProject && p ? p.id : null;
           if (over && this.dragOver !== over) { this.dragOver = over; cx.notify(); }
         })
-        .on_mouse_up("left", (_e, cx) => { if (this.dragRepo) this.dropRepo(cx, target); else if (p) this.dropProject(cx, p.id); })
+        .on_mouse_up("left", (_e, cx) => { if (this.dragRepo || this.dragTask) drop(cx); else if (p) this.dropProject(cx, p.id); })
         .on_hover((on, cx) => { this.hovered = on ? id : this.hovered === id ? null : this.hovered; cx.notify(); })
         .child(icon("layers", 13, p && !p.paused ? t.muted : t.dim))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().text_color(p && !p.paused ? t.foreground : t.dim).child(p?.name ?? S.noProject))
         .when(!open && Boolean(x.top), (el) => el.child(agentMark(t, x.top)))
+        // Task, terminal, board, the rest (its menu).
         .when(acts, (el) => el
-          .child(iconButton(t, `pboard-${id}`, "square-kanban", S.boardOf(p.name), () => openBoard(p)))
-          .child(iconButton(t, `pterm-${id}`, "square-terminal", S.projectTerminalHint, () => openInProject(p)))
           .child(iconButton(t, `padd-${id}`, "plus", S.projectTaskHint, () => this.openTaskForm({ project: p.id })))
+          .child(iconButton(t, `pterm-${id}`, "square-terminal", S.projectTerminalHint, () => openInProject(p)))
+          .child(iconButton(t, `pboard-${id}`, "square-kanban", S.boardOf(p.name), () => openBoard(p)))
           .child(iconButton(t, `pmore-${id}`, "ellipsis", S.projectMenu, () => openDialog("project-menu", { project: p.id }))))
         .when(!acts, (el) => el.child(div().text_size(11).text_color(t.dim).child(String(x.count))))
         .child(svg(CHEVRON(open)).size(11).flex_none().text_color(t.dim)));
       if (!open) return;
       // The whole project's work first (tasks and tabs above its repositories), then each repository.
       const ids = x.loose.map((y) => y.t.id);
-      for (const t2 of x.loose) { rows.push(this.taskRow(t, t2, { depth: 1, ids })); order.push(t2.t.id); }
+      const place = p ? { project: p.id, folder: null, row: id, drop } : null;
+      for (const t2 of x.loose) { rows.push(this.taskRow(t, t2, { depth: 1, ids, place })); order.push(t2.t.id); }
       for (const u of x.untracked) rows.push(this.untrackedRow(t, u, 1));
-      for (const r of x.repos.values()) repoRows(p, r);
+      const keys = [...x.repos.keys()];
+      for (const r of x.repos.values()) repoRows(p, r, keys);
     };
     for (const x of tree.projects) projectHeader(x);
     if (tree.orphan.count || tree.orphan.repos.size) projectHeader(tree.orphan);
@@ -615,7 +778,9 @@ export const Sidebar = {
       .hover((s) => s.bg(t.hover)).on_click(() => setShared("taskr.view", id)).child(icon(id === "now" ? "zap" : "folder-tree", 13)).child(label);
     return v_flex().id("taskr-sidebar").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       // Released anywhere but on a project: the drag is off.
-      .on_mouse_up("left", (_e, cx) => { if (this.dragProject || this.dragTask || this.dragRepo) { this.dragProject = null; this.dragTask = null; this.dragRepo = null; this.dragOver = null; cx.notify(); } })
+      .on_mouse_up("left", (_e, cx) => { this.pressed = null; if (this.dragProject || this.dragTask || this.dragRepo) { this.endDrag(); cx.notify(); } })
+      .on_mouse_move((e) => { this.moved(e); })
+      .on_hover((on, cx) => { if (!on && (this.pressed || this.dragProject || this.dragTask || this.dragRepo)) { this.cancelDrag(); cx.notify(); } })
       .size_full().min_h(0).bg(t.chrome).text_size(12.8).text_color(t.foreground)
       .child(h_flex().px(10).h(40).flex_none().gap(4).items_center().border_b(1).border_color(t.border)
         .when(!this.fixedView, (el) => el.child(tabBtn("now", S.now)).child(tabBtn("projects", S.projects)))
@@ -627,13 +792,13 @@ export const Sidebar = {
           .child(svg(CHEVRON(!stackFolded)).size(10).flex_none().text_color(t.dim))
           .child(icon(view === "now" ? "zap" : "folder-tree", 13)).child(view === "now" ? S.now : S.projects)))
         .child(div().flex_1())
-        .when(view === "projects", (el) => el.child(iconButton(t, "flt-done", this.filters.done ? "eye" : "eye-off", this.filters.done ? S.hideDone : S.showDone, (_e, cx) => {
-          this.filters.done = !this.filters.done; localStorage.setItem("filters", JSON.stringify(this.filters)); cx.notify();
-        })).child(iconButton(t, "add-proj", "folder-plus", S.newProject, () => openDialog("project"))))
+        .when(view === "projects", (el) => el.child(iconButton(t, "add-proj", "folder-plus", S.newProject, () => openDialog("project"))))
         // The board of every project from Now; in Projects each project's row has its own.
-        .when(view === "now", (el) => el.child(iconButton(t, "board", "square-kanban", S.openBoard, () => this.openBoard())))
+        .when(view === "now", (el) => el.child(iconButton(t, "board", "square-kanban", S.openBoard, () => this.openBoard()))
+          .child(iconButton(t, "stats", "chart-column", S.openStats, () => openStats())))
         .child(iconButton(t, "jump", "search", S.searchTasks, () => this.command("jump", null)))
-        .child(iconButton(t, "add-task", "plus", S.newTask, () => this.openTaskForm({}))))
+        // A new task from Now; in Projects tasks are made in their project or folder (their own +).
+        .when(view === "now", (el) => el.child(iconButton(t, "add-task", "plus", S.newTask, () => this.openTaskForm({})))))
       .when(Boolean(this.store.error), (el) => el.child(div().px(12).py(6).text_size(11).text_color(t.blocked).child(this.store.error)))
       .when(!stackFolded, (el) => el.child(v_flex().id("taskr-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows)));
   },

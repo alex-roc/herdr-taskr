@@ -92,7 +92,7 @@ function setup() {
   const data = {
     version: 1,
     // No reminders: a demo isn't the time for notifications.
-    settings: { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false, review_after: 0 },
+    settings: { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false },
     projects: [
       { id: "acme", name: "Acme", folders: [web, api] },
       { id: "book", name: "Handbook", folders: [book, notes] },
@@ -107,9 +107,12 @@ function setup() {
         sessions: [{ app: "claude", id: "3f2c9a1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f", cwd: web, at: now - 20 * 3600000 }], agent_ms: 25 * 60000 }),
       task({ title: "Write the onboarding guide", project: "book", folder: book, due: day(4), estimate: "3h" }),
       task({ title: "Upgrade to Node 24", project: "acme", folder: api, rank: 99 }),
-      task({ title: "Pricing page copy", project: "acme", folder: web, status: "waiting", next_step: "Waiting on design", updated: now - 5 * DAY }),
+      // Waiting on someone: parked, back on the day to follow up.
+      task({ title: "Pricing page copy", project: "acme", folder: web, status: "doing", snooze: day(2), waiting_on: "design", updated: now - 5 * DAY }),
+      // In progress for days with nothing moving: its time shows in yellow.
+      task({ title: "Split the billing module", project: "acme", folder: api, status: "doing", next_step: "Find the seams", updated: now - 5 * DAY }),
       task({ title: "Try a dark theme for the docs", project: "book", status: "inbox", snooze: day(3) }),
-      // Put off: back in three days, and someday.
+      // Parked: back in three days, and someday.
       task({ title: "Move the docs to MDX", project: "book", folder: book, status: "next", snooze: "someday" }),
       // A task for the whole project: its agent works across acme-web and acme-api.
       task({ title: "Share one auth client across web and api", project: "acme", next_step: "List where each repo calls auth" }),
@@ -123,7 +126,7 @@ function setup() {
   writeFileSync(FILE, JSON.stringify(data, null, 1) + "\n");
   herdr("space.select", { id: w1.space });
   void n1;
-  console.log("Demo ready: three repos and a folder in ~/taskr-demo, 13 tasks, 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
+  console.log("Demo ready: three repos and a folder in ~/taskr-demo, 14 tasks, 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
 }
 
 process.argv.includes("--clean") ? clean() : setup();

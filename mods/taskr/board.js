@@ -1,4 +1,4 @@
-// The board: a tab with one column per status. Drag a card to another column
+// The board: a tab with one column per stage. Drag a card to another column
 // to change its status, onto another card to put it there; click it to open it;
 // right-click for its menu.
 
@@ -7,13 +7,13 @@ import { v_flex, h_flex } from "gpui-base";
 import { theme, setShared, run, shared, props, home } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask } from "./lib/store.js";
-import { RANK, byRank, issueLabel, isLater, laterLabel, aside } from "./lib/util.js";
+import { RANK, byRank, issueLabel, isLater, laterLabel, aside, isDropped, STATUSES } from "./lib/util.js";
 import { statusIcon, taskMark, dueChip, chip, iconButton, icon, agentFor } from "./lib/ui.js";
 import { taskWhere, pausedProjects } from "./lib/world.js";
 import { openBoard } from "./lib/actions.js";
 import { openDialog } from "./lib/open.js";
 
-const COLUMNS = ["inbox", "next", "doing", "waiting", "review", "done"];
+const COLUMNS = STATUSES;
 const DONE_DAYS = 7;
 
 export const Board = {
@@ -33,7 +33,7 @@ export const Board = {
     const cols = Object.fromEntries(COLUMNS.map((c) => [c, []]));
     const paused = pausedProjects(this.store.data);
     for (const x of w.tasks) {
-      if (x.t.archived || x.t.status === "dropped") continue;
+      if (x.t.archived || isDropped(x.t)) continue;
       if (this.boardProject && x.project !== this.boardProject) continue;
       // Every project's board leaves paused ones out, but for an agent that needs you or works.
       if (!this.boardProject && paused.has(x.project) && !["blocked", "working"].includes(x.top)) continue;
@@ -123,7 +123,7 @@ export const Board = {
       .when(!blocked && Boolean(meta), (el) => el.child(div().truncate().text_size(11).text_color(t.muted).child(meta)))
       .when(Boolean(due) || isLater(task) || Boolean(task.issue) || Boolean(task.branch), (row) => row.child(h_flex().gap(5).items_center().flex_wrap()
         .when(Boolean(due), (el) => el.child(due))
-        .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze)), t.dim)))
+        .when(isLater(task), (el) => el.child(chip(t, S.laterUntil(laterLabel(task.snooze), task.waiting_on), t.dim)))
         .when(Boolean(task.issue), (el) => el.child(chip(t, issueLabel(task.issue), t.dim)))
         .when(Boolean(task.branch), (el) => el.child(h_flex().gap(3).items_center().text_size(10).text_color(t.dim).child(icon("git-branch", 11)).child(task.branch.replace(/^task\//, ""))))));
   },
@@ -131,7 +131,9 @@ export const Board = {
   column(t, status, list, wip) {
     const ids = list.map((x) => x.t.id);
     const over = this.pressed && this.over === status;
-    const full = status === "doing" && list.length > wip;
+    // The limit counts work in progress: parked tasks are out of it.
+    const inProgress = status === "doing" ? list.filter((x) => !isLater(x.t)).length : list.length;
+    const full = status === "doing" && inProgress > wip;
     return v_flex().id(`col-${status}`).flex_1().min_w(170).max_w(320).h_full().min_h(0).rounded(10)
       .bg(over ? t.selected : t.chrome).border_1().border_color(over ? t.accent : t.border)
       .on_mouse_move((_e, cx) => { if (this.pressed && (this.over !== status || this.overCard)) { this.over = status; this.overCard = null; cx.notify(); } })
@@ -139,7 +141,7 @@ export const Board = {
       .child(h_flex().px(12).h(38).flex_none().gap(7).items_center()
         .child(statusIcon(t, status, 14))
         .child(div().font_semibold().text_size(12.5).child(S.statusLabel[status]))
-        .child(div().text_size(11.5).text_color(full ? t.ansi3 : t.dim).child(status === "doing" ? `${list.length}/${wip}` : String(list.length)))
+        .child(div().text_size(11.5).text_color(full ? t.ansi3 : t.dim).child(status === "doing" ? `${inProgress}/${wip}` : String(list.length)))
         .child(div().flex_1())
         .when(["inbox", "next"].includes(status), (el) => el.child(iconButton(t, `col-add-${status}`, "plus", S.newTask,
           () => openDialog("task", { status, project: this.boardProject })))))

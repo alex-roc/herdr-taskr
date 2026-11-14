@@ -4,7 +4,7 @@ import { div, svg, image } from "gpui-kit";
 import { layout } from "herdr";
 import { h_flex } from "gpui-base";
 import { S } from "../strings.js";
-import { dueLabel, daysUntil, duration } from "./util.js";
+import { dueLabel, daysUntil, duration, stageOf } from "./util.js";
 
 export const SPINNER = "mods/workspace-chrome/spinner.svg";
 export const CHEVRON = (open) => `mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`;
@@ -16,17 +16,18 @@ export function icon(name, size = 14, color) {
   return color ? el.text_color(color) : el;
 }
 
-// Task status, one icon each.
-export const STATUS_ICON = { inbox: "inbox", next: "circle-dot", doing: "circle-play", waiting: "circle-pause", review: "eye", done: "circle-check", dropped: "circle-x" };
+// A task's stage (and Dropped), one icon each.
+export const STATUS_ICON = { inbox: "inbox", next: "circle-dot", doing: "circle-play", review: "eye", done: "circle-check", dropped: "circle-x" };
 export const statusIcon = (t, status, size = 14) => icon(STATUS_ICON[status] ?? "circle-dot", size, statusColor(t, status));
 
 export function statusColor(t, status) {
   return {
-    inbox: t.dim, next: t.muted, doing: t.working, waiting: t.ansi3, review: t.done, done: t.ansi2, dropped: t.dim,
+    inbox: t.dim, next: t.muted, doing: t.working, review: t.done, done: t.ansi2, dropped: t.dim,
   }[status] ?? t.dim;
 }
 
-// An agent's state as Herdr's agents list draws it.
+// An agent's turn as Herdr's agents list draws it: working, needs you (blocked), finished (done,
+// not seen yet), idle (seen, waiting for a word from you).
 export function agentMark(t, status, compact = true) {
   if (status === "working") return svg(SPINNER).size(12).mx(1).flex_none().text_color(t.working).spin(900);
   if (status === "blocked") {
@@ -48,7 +49,7 @@ export function agentFor(status, since, now = Date.now()) {
 
 export function taskMark(t, task, top) {
   const a = top ? agentMark(t, top) : null;
-  return h_flex().w(16).flex_none().justify_center().child(a ?? statusIcon(t, task.status, 13));
+  return h_flex().w(16).flex_none().justify_center().child(a ?? statusIcon(t, stageOf(task), 13));
 }
 
 export function chip(t, text, color, opts = {}) {
@@ -82,6 +83,8 @@ export function iconButton(t, id, name, tooltip, onClick) {
   return div().id(id).flex_none().px(4).h(22).rounded(5).flex().items_center()
     .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
     .tooltip(tooltip)
+    // Pressing it never starts a drag of the row it's on.
+    .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click((e, cx) => { cx.stop_propagation(); onClick(e, cx); })
     .child(icon(name, 14));
 }

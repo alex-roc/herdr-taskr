@@ -55,7 +55,7 @@
           <li>Press <kbd>n</kbd>. Title: <em>Checkout total ignores the coupon</em>. Pick the folder, due <code>today</code>, next step <em>Write a failing test first</em>, then press <kbd>t</kbd> to put it at the top.</li>
           <li>Press <kbd>w</kbd>. taskr creates <code>task/checkout-total-ignores-the-coupon</code> in <code>~/.herdr/worktrees/&lt;repo&gt;/…</code> and starts your agent there, with the title and the next step as its first message.</li>
           <li>Keep working. The task sits under <strong>Working</strong> with the agent's model and time; you'll see it jump to <strong>Needs you</strong> if it asks.</li>
-          <li>When it stops, the task is in <strong>To review</strong>. Open the detail, check <strong>Changes</strong>, then <strong>Ask for a pull request</strong>.</li>
+          <li>When it stops, it shows under <strong>Finished</strong>. Open the detail, check <strong>Changes</strong>, then <strong>Ask for a pull request</strong>: once the PR is open, the task moves to <strong>To review</strong> by itself (it has its own branch).</li>
           <li>If CI fails, <strong>Send failed checks</strong> sends the agent their names. When the PR is merged, right-click → <strong>Archive</strong> and choose <em>Archive and remove worktree</em>.</li>
         </ol>
       </section>
@@ -66,7 +66,7 @@
         <ol>
           <li>In Projects, right-click the folder → <strong>Import GitHub issues</strong> (or <strong>Import Linear issues</strong> for the ones assigned to you, most urgent first, with their due date). Tick the ones worth doing; they arrive in the <strong>Inbox</strong> with the issue's link and text attached.</li>
           <li>Open the board (<kbd>cmd</kbd> <kbd>shift</kbd> <kbd>b</kbd>) and drag what you'll do this week from Inbox to <strong>Next</strong>.</li>
-          <li>In the list, drag the tasks of Up next into the order you'll do them, and give due dates like <code>wed</code> or <code>fri</code>.</li>
+          <li>In the list, drag the tasks of Next into the order you'll do them, and give due dates like <code>wed</code> or <code>fri</code>.</li>
           <li>Start an agent on the top one with <kbd>l</kbd>. It gets the issue's text in its first message, so it starts with the full report.</li>
         </ol>
         <p>Issues you've already imported don't show up again in the list.</p>
@@ -78,7 +78,7 @@
         <ol>
           <li>Open Herdr and switch to taskr. The tasks are where you left them; their agents are gone.</li>
           <li>Select the first one and press <kbd>r</kbd> (or <strong>Resume agent</strong> in the detail). Its Claude Code or Codex conversation continues in the folder it was in, in a new tab tied to the task.</li>
-          <li>Do the same for the others. Each moves back to Doing as soon as its agent starts working.</li>
+          <li>Do the same for the others. Each moves back to In progress as soon as its agent starts working.</li>
         </ol>
         <p>Glance at the status bar before you start a big batch: it shows how much of your Claude and Codex limits is left, and when each resets.</p>
       </section>
@@ -92,14 +92,14 @@
           <li>Answer from the detail's <strong>Message the agent</strong> box, or <kbd>enter</kbd> to jump to the agent.</li>
           <li>Herdr's next and previous agent keys follow taskr's order, so they visit the agents in the order the list shows them.</li>
         </ol>
-        <p>Set a <strong>Doing limit</strong> in the settings (the gear in the status bar) to keep yourself honest: the status bar warns when you have more in progress than that.</p>
+        <p>Set a <strong>In-progress limit</strong> in the settings (the gear in the status bar) to keep yourself honest: the status bar warns when you have more in progress than that.</p>
       </section>
 
       <section class="example" id="adopt">
         <h2>Plan work already started</h2>
         <p class="when">You opened a terminal and started an agent before thinking of it as a task. Now it's grown.</p>
         <ol>
-          <li>Find it in the list: it's a task already, with no plan, named after what the agent calls its work. It's under its folder in Projects, or in Now if it's working, finished or waiting on you.</li>
+          <li>Find it in the list: it's a task already, with no plan, named after what the agent calls its work. It's under its folder in Projects, and in Now: in progress, or above if its agent is working, finished or needs you.</li>
           <li>Open its detail and press <strong>Plan it…</strong>: give it a real title, a project, a next step and a due date. Or press <kbd>e</kbd>. From now on it's yours, and it stays until you mark it done.</li>
           <li>Started a second agent for the same job? Right-click the first task → <strong>Move to task…</strong> and pick the other: its agent, conversations and time go there, and the first task goes. A plain terminal (shell) has <strong>Add to task…</strong> instead.</li>
         </ol>
@@ -155,10 +155,10 @@ herdr-app do layout.toggle '{"id":"taskr-detail"}'  <span class="c"># show or hi
         <h2>A weekly review</h2>
         <p class="when">Friday afternoon. What moved, what's stuck, what's next.</p>
         <ol>
-          <li><strong>Stalled</strong> in Now lists Doing and Waiting tasks that haven't moved in a few days (you set how many). Decide each one: back to Next, Waiting with a note, or Dropped.</li>
+          <li>Under <strong>In progress</strong>, a task that hasn't moved in a few days (you set how many) shows its time in yellow. Decide each one: back to Next, <strong>Waiting on…</strong> someone with a day to follow up, or Dropped. <strong>Later</strong> holds what you parked, and what you wait on comes back by itself.</li>
           <li>The board's <strong>Done</strong> column shows the last seven days; the status bar counts what you finished today.</li>
-          <li>In Projects, the eye button shows finished tasks too. Archive what's settled to put its tabs away.</li>
-          <li>Drag next week's work from Inbox onto Up next, in the order you'll do it.</li>
+          <li>Finished tasks are in the board's <strong>Done</strong> column. Archive what's settled to put its tabs away.</li>
+          <li>Drag next week's work from Inbox onto Next, in the order you'll do it.</li>
         </ol>
       </section>
     </div>

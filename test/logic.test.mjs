@@ -123,10 +123,38 @@ test("files from before: repos and repo read as folders and folder, deleted task
   assert.equal("repos" in d.projects[0], false);
   assert.deepEqual(d.tasks.map((t) => [t.id, t.folder, "repo" in t]), [["1", "~/dev/x", false], ["3", "~/notes", false]]);
   assert.equal("track" in d.settings, false);
-  assert.equal(d.settings.review_after, 60);
+  assert.equal(d.settings.park_after, 0, "parking idle agents is off unless chosen");
   assert.equal(d.settings.pause_after, 1);
-  assert.equal(parse(JSON.stringify({ settings: { review_after: 7 } })).settings.review_after, 60, "only the offered choices");
-  assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.review_after, 0);
+  assert.equal(parse(JSON.stringify({ settings: { park_after: 7 } })).settings.park_after, 0, "only the offered choices");
+  assert.equal(parse(JSON.stringify({ settings: { park_after: 240 } })).settings.park_after, 240);
+  assert.equal("review_after" in parse(JSON.stringify({ settings: { review_after: 60 } })).settings, false);
+  assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.park_after, 0);
+});
+
+test("files from before 1.7: Dropped is Done with an outcome, Waiting is parked, Idle is gone", () => {
+  const began = new Date(2026, 10, 1, 12).getTime();
+  const d = parse(JSON.stringify({ tasks: [
+    { id: "d", title: "Dropped", status: "dropped", history: [{ s: "dropped", at: 1 }] },
+    { id: "w", title: "Waiting", status: "waiting", history: [{ s: "waiting", at: began }] },
+    { id: "ws", title: "Waiting, someday", status: "waiting", snooze: "someday" },
+    { id: "i", title: "Idle", status: "review", auto: true, idle: true },
+    { id: "in", title: "Idle, adopted resting", status: "next", auto: true, idle: true },
+    { id: "o", title: "Odd", status: "next", outcome: "dropped", waiting_on: "Ana" },
+  ] }));
+  const t = (id) => d.tasks.find((x) => x.id === id);
+  assert.deepEqual([t("d").status, t("d").outcome], ["done", "dropped"]);
+  assert.deepEqual(t("d").history, [{ s: "dropped", at: 1 }], "the old status change is kept");
+  assert.deepEqual([t("w").status, t("w").snooze, t("w").waiting_on], ["doing", "2026-11-04", ""], "back three days after it began waiting");
+  assert.deepEqual([t("ws").snooze, t("ws").waiting_on], ["someday", ""]);
+  assert.equal(t("i").idle, undefined);
+  assert.deepEqual([t("i").status, t("i").snooze], ["review", "agent"], "Idle: parked until its agent works");
+  assert.deepEqual([t("in").status, t("in").snooze], ["doing", "agent"], "an open agent is work in progress");
+  assert.equal(parse(JSON.stringify({ settings: { review_after: 60 } })).settings.park_after, 60, "who had Idle after an hour keeps it");
+  assert.equal(parse(JSON.stringify({ settings: { review_after: 15 } })).settings.park_after, 60);
+  assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.park_after, 0);
+  assert.equal(parse(JSON.stringify({ settings: { review_after: 60, park_after: 0 } })).settings.park_after, 0, "a choice made since stays");
+  assert.equal(t("o").outcome, undefined, "only a Done task is dropped");
+  assert.equal(t("o").waiting_on, undefined, "only a parked task waits");
 });
 
 test("tasker's files come over to taskr the first time, and never over taskr's own", async () => {
@@ -208,22 +236,23 @@ test("Now: what needs you first, each task once", () => {
   const v = nowView(w, parse(H.files.get(FILE())));
   const ids = (l) => l.map((x) => x.t.id);
   assert.deepEqual(ids(v.needs), ["blocked1"]);
-  assert.deepEqual(ids(v.review), ["review1"]);
+  assert.deepEqual(ids(v.finished), ["review1"], "its agent finished: that comes before its stage");
   assert.deepEqual(ids(v.working).sort(), ["doing1", "remote1"]);
-  assert.deepEqual(ids(v.stalled), ["wait1"]);
+  assert.deepEqual(ids(v.review), []);
+  assert.deepEqual(ids(v.doing), []);
   assert.deepEqual(ids(v.next), ["next2", "next1"], "a file with priorities keeps their order");
   assert.deepEqual(ids(v.inbox).sort(), ["inbox1", "inbox2"]);
-  const all = [...v.needs, ...v.review, ...v.working, ...v.stalled, ...v.next, ...v.inbox].map((x) => x.t.id);
+  assert.deepEqual(ids(v.later), ["wait1"], "Waiting, from before, is parked");
+  const all = Object.values(v).flat().map((x) => x.t.id);
   assert.equal(new Set(all).size, all.length);
   // tb4's agent has no task yet (the sidebar makes it one): never a row of Now on its own.
   assert.ok(w.untracked.some((u) => u.tab === "tb4"));
   assert.ok(!Object.values(v).flat().some((x) => x.tab === "tb4"));
 });
-
 test("Projects: repos under their project, worktrees under their repo, counts include loose tabs", () => {
   world();
   const w = look();
-  const tree = projectTree(w, parse(H.files.get(FILE())), H.home, { done: false });
+  const tree = projectTree(w, parse(H.files.get(FILE())), H.home);
   const app = tree.projects.find((x) => x.p.id === "pa");
   assert.deepEqual([...app.repos.keys()], ["~/dev/app"]);
   const appRepo = app.repos.get("~/dev/app");
@@ -252,7 +281,7 @@ test("arrived: the launched tab, not another new one", () => {
   assert.equal(arrived(p, [{ id: "s", tabs: [{ id: "a" }] }]), null);
 });
 
-test("launch: opens the agent in the repo's space and marks the task doing", async () => {
+test("launch: opens the agent in the folder's space and puts the task in progress", async () => {
   world();
   const s = new Store();
   await s.load();
@@ -308,7 +337,7 @@ test("a project's terminal: its own space above the repositories, shown at the p
     program: { key: "shell", name: "zsh", shell: true, agent: false }, focused: false, zoomed: false, movable: true });
   H.terminals.push({ address: "t9z", state: "live", labels: { "herdr.space": "sp9", "herdr.tab": "tb9", "taskr.project": "pw" }, foreground: { pid: 99, argv: ["zsh"], cwd: "/home/me/dev" } });
   const w = build({ data: s.data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
-  const tree = projectTree(w, s.data, H.home, { done: false });
+  const tree = projectTree(w, s.data, H.home);
   const web = tree.projects.find((x) => x.p.id === "pw");
   assert.deepEqual(web.untracked.map((u) => u.tab), ["tb9"], "at the project's level");
   assert.ok(![...web.repos.values()].some((r) => r.untracked.some((u) => u.tab === "tb9")));
@@ -326,7 +355,7 @@ test("a project's space whose label never came: known by its name, in a folder t
     program: { key: "shell", name: "zsh", shell: true, agent: false }, focused: false, zoomed: false, movable: true });
   H.terminals.push({ address: "t9z", state: "live", labels: { "herdr.space": "sp9", "herdr.tab": "tb9" }, foreground: { pid: 99, argv: ["zsh"], cwd: H.home } });
   const w = build({ data: s.data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
-  const tree = projectTree(w, s.data, H.home, { done: false });
+  const tree = projectTree(w, s.data, H.home);
   assert.deepEqual(tree.projects.find((x) => x.p.id === "pw").untracked.map((u) => u.tab), ["tb9"]);
   assert.ok(![...tree.orphan.repos.values()].some((r) => r.untracked.some((u) => u.tab === "tb9")), "not under No project");
 });
@@ -382,7 +411,7 @@ test("launch in a worktree: same title, its own branch", async () => {
   assert.deepEqual(wt[1].slice(0, 3), ["worktree", "add", "-b"]);
 });
 
-test("tasks follow their agents: working → doing, finished → review, never done", async () => {
+test("tasks follow their agents: working → in progress; a finished turn moves nothing; never done", async () => {
   world();
   H.props = { role: "sidebar" };
   const v = new Taskr();
@@ -403,14 +432,19 @@ test("tasks follow their agents: working → doing, finished → review, never d
   H.agents.at(-1).status = "done";
   v.render(cx());
   await settle();
-  assert.equal(v.store.task("next1").status, "review");
+  assert.equal(v.store.task("next1").status, "doing", "a turn isn't the task");
   H.agents.at(-1).status = "idle";
   v.render(cx());
   await settle();
-  assert.equal(v.store.task("next1").status, "review", "never done by itself");
+  assert.equal(v.store.task("next1").status, "doing", "never to Review or Done by itself");
+  // In Review, an agent at work again (fixing what the review found) leaves it there.
+  await v.store.update((x) => { setStatus(x.tasks.find((t) => t.id === "next1"), "review"); });
+  H.agents.at(-1).status = "working";
+  v.render(cx());
+  await settle();
+  assert.equal(v.store.task("next1").status, "review");
   assert.ok(v.store.task("next1").agent_ms >= 0);
 });
-
 test("agent info: Claude Code model, effort and context; Codex from its rollout", async () => {
   world();
   H.files.set("/home/me/.claude/sessions/1001.json", JSON.stringify({ sessionId: "abc", cwd: "/home/me/dev/app" }));
@@ -514,19 +548,25 @@ test("Now and Projects stacked: each list its own view, the books kept once, key
   assert.ok(now.c.focused && !projects.c.focused, "Now takes the keys");
 });
 
-test("Now: a finished agent asks for a review only of work in progress", () => {
+test("Now: an agent that finished, seen or not, is in Finished (unseen first); in progress isn't 'doing now'", () => {
   world();
   const d = JSON.parse(H.files.get(FILE()));
   // t4 is done (unseen) on tab tb4: give it to a task in Next.
   d.tasks.push(task({ id: "later-agent", title: "Parked", status: "next", tabs: ["tb4"] }));
-  const data = parse(JSON.stringify(d));
-  const w = build({ data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
-  const v = nowView(w, data);
-  assert.ok(!v.review.some((x) => x.t.id === "later-agent"), "Next is your call");
-  assert.ok(v.next.some((x) => x.t.id === "later-agent"));
+  let data = parse(JSON.stringify(d));
+  let w = build({ data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
+  assert.ok(nowView(w, data).finished.some((x) => x.t.id === "later-agent"));
+  H.agents.find((a) => a.address === "t4").status = "idle";
+  w = build({ data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
+  assert.ok(nowView(w, data).finished.some((x) => x.t.id === "later-agent"), "seen: still waiting for a word from you");
+  assert.ok(!nowView(w, data).next.some((x) => x.t.id === "later-agent"));
+  // Unseen first: t8 (review1) finished, not seen; t4 seen.
+  assert.deepEqual(nowView(w, data).finished.map((x) => x.t.id), ["review1", "later-agent"]);
+  // Parked until its agent works: in Later while it's idle.
+  data.tasks.find((t) => t.id === "later-agent").snooze = "agent";
+  assert.ok(nowView(w, data).later.some((x) => x.t.id === "later-agent"));
 });
-
-test("Later: put off until a day or someday, out of Now's lists, soonest first", () => {
+test("Later: parked until a day or someday, out of Now's lists, soonest first", () => {
   assert.equal(parseLater("someday"), "someday");
   assert.equal(parseLater("tomorrow", at), "2026-11-08");
   assert.equal(parseLater("blah"), undefined);
@@ -541,7 +581,8 @@ test("Later: put off until a day or someday, out of Now's lists, soonest first",
   const w = build({ data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
   const v = nowView(w, data);
   const ids = (l) => l.map((x) => x.t.id);
-  assert.deepEqual(ids(v.later), ["inbox1", "next1"]);
+  assert.deepEqual(ids(v.later).sort(), ["inbox1", "next1", "wait1"]);
+  assert.equal(ids(v.later).at(-1), "next1", "someday last");
   assert.ok(!ids(v.next).includes("next1") && !ids(v.inbox).includes("inbox1"));
   assert.ok(ids(v.needs).includes("blocked1"));
   // Starting it is no longer putting it off.
@@ -661,8 +702,8 @@ const tick = async (v) => { v.render(cx()); await settle(); await v.store.load()
 test("every agent's tab is a task: one with no plan, named after its agent, Done when its tab closes", async () => {
   const v = await sidebar();
   const light = () => v.store.data.tasks.filter((t) => t.auto);
-  // tb4's agent (finished) had no task: now one with no plan, in Review; shells (tb3, tb6) aren't tasks.
-  assert.deepEqual(light().map((t) => [t.tabs[0], t.status]), [["tb4", "review"]]);
+  // tb4's agent (finished) had no task: now one with no plan, in progress; shells (tb3, tb6) aren't tasks.
+  assert.deepEqual(light().map((t) => [t.tabs[0], t.status]), [["tb4", "doing"]]);
   const id = light()[0].id;
   assert.ok(H.hcLog.some((a) => a[0] === "label" && a[2] === `taskr.task=${id}`), "its terminal is labelled");
   // Its name follows its agent's.
@@ -674,30 +715,30 @@ test("every agent's tab is a task: one with no plan, named after its agent, Done
   H.spaces[0].tabs = H.spaces[0].tabs.filter((t) => t.id !== "tb4");
   H.agents = H.agents.filter((a) => a.address !== "t4");
   await tick(v);
-  assert.equal(v.store.task(id).status, "review", "still as it was right after");
+  assert.equal(v.store.task(id).status, "doing", "still as it was right after");
   globalThis.__taskr.books.info.gone[id] -= 61000;
   await tick(v);
   assert.equal(v.store.task(id).status, "done");
+  assert.equal(v.store.task(id).freed, true);
 });
 
-test("an agent's task: Doing while it works or asks, To review once it finished, Idle while it waits for you", async () => {
+test("an agent's task: in progress whatever its agent does, one per tab", async () => {
   const { adopt } = await import("../mods/taskr/lib/actions.js");
   world();
   const store = new Store();
   await store.load();
   const w = look();
   const u = w.untracked.find((x) => x.tab === "tb4");
-  for (const [top, status, idle] of [["working", "doing", null], ["blocked", "doing", null], ["done", "review", null], ["idle", "next", true]]) {
+  for (const top of ["working", "blocked", "done", "idle"]) {
     await store.update((d) => { d.tasks = d.tasks.filter((t) => !t.tabs.includes("tb4")); });
     const id = await adopt(store, { ...u, top });
-    assert.equal(store.task(id).status, status, top);
-    assert.equal(store.task(id).idle ?? null, idle, top);
+    assert.equal(store.task(id).status, "doing", top);
+    assert.equal(store.task(id).idle, undefined, top);
     assert.equal(store.task(id).auto, true);
   }
   // One task per tab.
   assert.equal(await adopt(store, u), null);
 });
-
 test("a task with no plan is Done when its agent quits, its tab still open; after a restart it waits for the agent", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
@@ -713,7 +754,7 @@ test("a task with no plan is Done when its agent quits, its tab still open; afte
   // Quit by hand (/exit): the shell is in front again and stays.
   t4.foreground = { pid: 4004, argv: ["/bin/zsh", "-l"], name: "zsh" };
   await tick(v);
-  assert.equal(v.store.task(id).status, "review", "not at once");
+  assert.equal(v.store.task(id).status, "doing", "not at once");
   globalThis.__taskr.books.info.gone[id] -= 31000;
   await tick(v);
   assert.equal(v.store.task(id).status, "done", "done, its tab still open");
@@ -724,7 +765,7 @@ test("a task with no plan is Done when its agent quits, its tab still open; afte
   // What's left in its tab is a terminal like any other: not the closed task's row.
   assert.ok(!v.world.taskOfTab.has("tb4"));
   assert.ok(v.world.untracked.some((u) => u.tab === "tb4" && !u.agents.length));
-  const tree = projectTree(v.world, v.store.data, H.home, { done: false });
+  const tree = projectTree(v.world, v.store.data, H.home);
   const shown = [...tree.projects, tree.orphan].flatMap((p) => [...p.loose, ...[...p.repos.values()].flatMap((r) => r.tasks)]);
   assert.ok(!shown.some((x) => x.t.id === id), "the closed task isn't shown for its terminal");
   assert.ok([...tree.projects, tree.orphan].some((p) => [...p.untracked, ...[...p.repos.values()].flatMap((r) => r.untracked)].some((u) => u.tab === "tb4")), "the terminal is");
@@ -735,7 +776,25 @@ test("a task with no plan is Done when its agent quits, its tab still open; afte
   await tick(v);
   assert.equal(v.store.data.tasks.filter((t) => t.tabs.includes("tb4")).length, 1, "no second task");
   assert.equal(v.store.task(id).status, "doing");
+  assert.equal(v.store.task(id).freed, undefined, "its tab is its own again");
   assert.equal(v.world.taskOfTab.get("tb4")?.t.id, id);
+});
+
+test("a task with no plan in Review whose agent quits waits there for you, and lets go of its tab", async () => {
+  const v = await sidebar();
+  const id = v.store.data.tasks.find((t) => t.auto).id;
+  await v.store.update((d) => { setStatus(d.tasks.find((t) => t.id === id), "review"); });
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  t4.pid = 4004;
+  t4.foreground = { pid: 4004, argv: ["/bin/zsh", "-l"], name: "zsh" };
+  await tick(v);
+  globalThis.__taskr.books.info.gone[id] -= 31000;
+  await tick(v);
+  assert.equal(v.store.task(id).status, "review");
+  assert.equal(v.store.task(id).freed, true);
+  await tick(v);
+  assert.ok(!v.world.taskOfTab.has("tb4"), "its tab is a terminal again");
+  assert.equal(v.store.task(id).status, "review", "and it stays there");
 });
 
 test("an agent started again in the tab of a closed task with no plan goes on with it; a planned one keeps its tab", async () => {
@@ -747,7 +806,12 @@ test("an agent started again in the tab of a closed task with no plan goes on wi
   const u = w.untracked.find((x) => x.tab === "tb4");
   assert.ok(u, "its tab belongs to no task");
   assert.equal(await adopt(store, { ...u, top: "done" }), "light");
+  assert.equal(store.task("light").status, "doing");
+  // One left in Review (its agent quit) is taken up again in Review.
+  await store.update((d) => { const t = d.tasks.find((x) => x.id === "light"); t.status = "review"; t.freed = true; });
+  assert.equal(await adopt(store, { ...u, top: "working" }), "light");
   assert.equal(store.task("light").status, "review");
+  assert.equal(store.task("light").freed, undefined);
   assert.equal(store.data.tasks.filter((t) => t.tabs.includes("tb4")).length, 1);
   // A closed task you planned keeps its tab: no task is made or reopened for it.
   world({ tasks: [task({ id: "mine", title: "Mine", status: "done", tabs: ["tb4"] })] });
@@ -757,61 +821,44 @@ test("an agent started again in the tab of a closed task with no plan goes on wi
   assert.equal(await adopt(s2, u), null);
 });
 
-test("dimmed: what's closed, put off or Idle, unless its agent works or asks", () => {
+test("dimmed: what's closed or parked, unless its agent works or asks", () => {
   const later = "2999-01-01";
   assert.equal(aside({ status: "doing" }), false);
   assert.equal(aside({ status: "done" }), true);
-  assert.equal(aside({ status: "dropped" }), true);
+  assert.equal(aside({ status: "done", outcome: "dropped" }), true);
   assert.equal(aside({ status: "next", snooze: later }), true);
   assert.equal(aside({ status: "next", snooze: "someday" }, "idle"), true);
-  assert.equal(aside({ status: "review", auto: true, idle: true }), true, "Idle");
-  assert.equal(aside({ status: "review", idle: true }), false, "only a task with no plan is Idle");
-  assert.equal(aside({ status: "next", snooze: later }, "working"), false, "put off, but its agent works");
-  assert.equal(aside({ status: "review", auto: true, idle: true }, "blocked"), false, "Idle, but its agent asks");
+  assert.equal(aside({ status: "doing", snooze: "agent" }, "idle"), true, "parked until its agent works");
+  assert.equal(aside({ status: "doing", auto: true }, "idle"), false, "an idle agent's task is work in progress");
+  assert.equal(aside({ status: "next", snooze: later }, "working"), false, "parked, but its agent works");
+  assert.equal(aside({ status: "doing", snooze: "agent" }, "blocked"), false, "parked, but its agent asks");
 });
-
-test("a task with no plan leaves To review for Idle after the time set, not because you look at it; a planned one stays", async () => {
+test("park idle agents: off by default; when set, a task with no plan waiting on you is parked until its agent works", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
-  const resting = () => v.store.task(id).status === "review" && v.store.task(id).idle === true;
-  // review1 (planned, agent t8 finished) and the light one are both in Review.
-  assert.equal(v.store.task("review1").status, "review");
-  // Its terminal in front: you may be working with it, so it stays in To review.
-  H.focused = { pane: "p4" };
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  H.agents.find((a) => a.address === "t4").status = "idle";
+  H.agents.find((a) => a.address === "t8").status = "idle";
+  t4.status_ms = Date.now() - 5 * 3600000;
+  H.terminals.find((t) => t.address === "t8").status_ms = Date.now() - 5 * 3600000;
   await tick(v);
-  assert.equal(v.store.task(id).status, "review");
-  assert.equal(v.store.task(id).idle, undefined);
-  // After the time set (an hour by default): Idle, still open; the planned one stays.
-  await v.store.update((d) => { for (const t of d.tasks) if (t.id === id || t.id === "review1") t.history.at(-1).at -= 61 * 60000; });
+  assert.equal(v.store.task(id).snooze, null, "off by default: it stays in progress");
+  assert.ok(nowView(v.world, v.store.data).finished.some((x) => x.t.id === id), "waiting for a word from you");
+  // Four hours: parked until its agent works; the planned one (review1, t8 idle as long) isn't.
+  await v.store.update((d) => { d.settings.park_after = 240; });
   await tick(v);
-  assert.ok(resting(), "Idle, still open");
-  assert.equal(v.store.task("review1").idle, undefined);
+  assert.equal(v.store.task(id).snooze, "agent");
+  assert.equal(v.store.task(id).status, "doing", "its stage doesn't change");
+  assert.equal(v.store.task("review1").snooze, null);
   v.render(cx());
-  const now = nowView(v.world, v.store.data);
-  assert.ok(now.idle.some((x) => x.t.id === id) && !now.review.some((x) => x.t.id === id) && !now.later.some((x) => x.t.id === id));
-  // It works again: Doing, no longer Idle; finished again: To review.
-  H.focused = null;
+  assert.ok(nowView(v.world, v.store.data).later.some((x) => x.t.id === id));
+  // Its agent works again: back, in progress.
   H.agents.find((a) => a.address === "t4").status = "working";
+  t4.status_ms = Date.now();
   await tick(v);
+  assert.equal(v.store.task(id).snooze, null);
   assert.equal(v.store.task(id).status, "doing");
-  assert.equal(v.store.task(id).idle, undefined);
-  H.agents.find((a) => a.address === "t4").status = "done";
-  await tick(v);
-  assert.equal(v.store.task(id).status, "review");
-  // Always: the time never moves it.
-  await v.store.update((d) => { d.settings.review_after = 0; d.tasks.find((x) => x.id === id).history.at(-1).at -= 99 * 3600000; });
-  await tick(v);
-  assert.equal(v.store.task(id).idle, undefined);
-  // Its agent quits: Done (resumable), Idle or not.
-  await v.store.update((d) => { d.tasks.find((x) => x.id === id).idle = true; });
-  H.spaces[0].tabs = H.spaces[0].tabs.filter((t) => t.id !== "tb4");
-  H.agents = H.agents.filter((a) => a.address !== "t4");
-  await tick(v);
-  globalThis.__taskr.books.info.gone[id] -= 61000;
-  await tick(v);
-  assert.equal(v.store.task(id).status, "done");
 });
-
 test("quiet projects pause by themselves and come back at the next sign of life; one you pause stays", async () => {
   const old = Date.now() - 5 * DAY;
   // pa (App) has an agent at work (doing1, t1); pw (Website) and pq (quiet) have had nothing for days.
@@ -857,7 +904,7 @@ test("a task with no plan you touch is yours: it keeps its name and its status",
   H.agents = H.agents.filter((a) => a.address !== "t4");
   await tick(v);
   assert.ok(!globalThis.__taskr.books.info.gone?.[id], "not counted down");
-  assert.equal(v.store.task(id).status, "review", "still as you left it");
+  assert.equal(v.store.task(id).status, "doing", "still as you left it");
 });
 
 test("a deleted task is gone from the file, and its tab's agent gets a task again", async () => {
@@ -964,11 +1011,11 @@ test("detail: a status picked there is saved and drawn at once; Activity only wh
   await settle();
   const { S } = await import("../mods/taskr/strings.js");
   assert.ok(!text(v.render(cx())).includes(S.activity.toUpperCase()), "off by default");
-  const chip = walk(v.render(cx())).find((n) => n.id === "ds-waiting");
+  const chip = walk(v.render(cx())).find((n) => n.id === "ds-dropped");
   const before = c.notified;
   chip.handlers.on_click({}, cx());
   await settle();
-  assert.equal(v.store.task("blocked1").status, "waiting");
+  assert.deepEqual([v.store.task("blocked1").status, v.store.task("blocked1").outcome], ["done", "dropped"]);
   assert.ok(c.notified > before, "the copy that wrote redraws");
   await v.store.update((d) => { d.settings.activity = true; });
   assert.ok(text(v.render(cx())).includes(S.activity.toUpperCase()), "on in the settings");
@@ -1040,7 +1087,7 @@ test("find a task in attach mode ties the loose tab to the picked task", async (
   v.pickJump(undefined, c);
   await settle();
   assert.ok(v.store.task("blocked1").tabs.includes("tb3"));
-  assert.ok(v.jumpList().every((x) => ["inbox", "next", "doing", "waiting", "review"].includes(x.status)), "only open tasks are offered");
+  assert.ok(v.jumpList().every((x) => ["inbox", "next", "doing", "review"].includes(x.status)), "only open tasks are offered");
 });
 
 test("sessions are kept on the task, and Resume continues the last one in its folder", async () => {
@@ -1146,10 +1193,10 @@ test("a paused project: out of Now and Projects' list, but for an agent that nee
   d.projects.find((p) => p.id === "pa").paused = true;
   const w = build({ data: d, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
   const v = nowView(w, d);
-  const all = [...v.review, ...v.stalled, ...v.next, ...v.inbox, ...v.later];
+  const all = [...v.review, ...v.doing, ...v.next, ...v.inbox, ...v.later];
   assert.ok(!all.some((x) => x.project === "pa"), "its waiting work leaves Now");
   assert.ok(v.needs.some((x) => x.t.id === "blocked1"), "an agent asking still shows");
-  const tree = projectTree(w, d, H.home, { done: false });
+  const tree = projectTree(w, d, H.home);
   assert.ok(!tree.projects.some((x) => x.p.id === "pa") && tree.paused.some((x) => x.p.id === "pa"));
   void w0;
 });
@@ -1169,4 +1216,151 @@ test("sidebar: stacked lists fold to their header, never both", async () => {
   view.stackFocus("projects"); // all the room to Projects: it unfolds, Now folds
   assert.equal(H.shared["taskr.stackFolded"], "now");
   assert.deepEqual(H.runs.at(-2), ["layout.resize", { id: "taskr-now", px: 41 }]);
+});
+
+test("flow: the turn writes the stage only when an agent starts work; quitting closes only what has no plan", async () => {
+  const { onWorking, quitStage, adoptStage, prReady, stale, nowSection, parkDue } = await import("../mods/taskr/lib/flow.js");
+  assert.equal(onWorking({ status: "next" }), "doing");
+  assert.equal(onWorking({ status: "inbox" }), "doing");
+  assert.equal(onWorking({ status: "done" }), "doing", "work on a closed task opens it again");
+  assert.equal(onWorking({ status: "done", outcome: "dropped" }), null);
+  assert.equal(onWorking({ status: "review" }), null, "fixing what the review found is part of it");
+  assert.equal(onWorking({ status: "doing" }), null);
+  assert.equal(quitStage({ status: "doing" }), "done");
+  assert.equal(quitStage({ status: "review" }), "review");
+  assert.equal(adoptStage(null), "doing");
+  assert.equal(adoptStage({ status: "review" }), "review");
+  const since = Date.now() - 3600000;
+  const t = { status: "doing", branch: "task/x", history: [{ s: "doing", at: since }] };
+  assert.equal(prReady(t, { state: "OPEN", createdAt: new Date(since + 1000).toISOString() }), true);
+  assert.equal(prReady(t, { state: "OPEN", createdAt: new Date(since - 86400000).toISOString() }), false, "an older PR isn't this round's");
+  assert.equal(prReady({ ...t, branch: null }, { state: "OPEN", createdAt: new Date().toISOString() }), false, "only a task with its own branch");
+  assert.equal(prReady(t, { state: "MERGED", createdAt: new Date().toISOString() }), false);
+  assert.equal(prReady(t, null), false);
+  const now = Date.now(), day = 86400000;
+  assert.equal(stale({ status: "doing" }, null, now - 5 * day, now, 3 * day), true);
+  assert.equal(stale({ status: "doing" }, "idle", now - 5 * day, now, 3 * day), true);
+  assert.equal(stale({ status: "doing" }, "working", now - 5 * day, now, 3 * day), false);
+  assert.equal(stale({ status: "next" }, null, now - 5 * day, now, 3 * day), false);
+  assert.equal(stale({ status: "doing", snooze: "someday" }, null, now - 5 * day, now, 3 * day), false);
+  const x = (t, top = null) => ({ t, top });
+  assert.equal(nowSection(x({ status: "done" }, "blocked")), null);
+  assert.equal(nowSection(x({ status: "next", snooze: "someday" }, "blocked")), "needs");
+  assert.equal(nowSection(x({ status: "review" }, "done")), "finished");
+  assert.equal(nowSection(x({ status: "doing", snooze: "agent" }, "idle")), "later");
+  assert.equal(nowSection(x({ status: "doing" }, "idle")), "finished", "an idle agent waits for you: not 'doing'");
+  assert.equal(nowSection(x({ status: "doing" })), "doing", "in progress, no agent waiting");
+  assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 60), true);
+  assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 0), false, "never by default");
+  assert.equal(parkDue({ status: "doing" }, "idle", now - 2 * 3600000, now, 60), false, "a planned task is never parked by itself");
+  assert.equal(parkDue({ status: "doing", auto: true }, "done", now - 2 * 3600000, now, 60), false, "not before you've seen it");
+});
+
+test("setStatus: Dropped is Done with an outcome; Done again clears it; starting or closing unparks", () => {
+  const t = cleanTask({ id: "a", title: "A", status: "next", snooze: "someday", waiting_on: "Ana" });
+  assert.equal(t.waiting_on, "Ana");
+  setStatus(t, "dropped");
+  assert.deepEqual([t.status, t.outcome, t.snooze, t.waiting_on, t.history.at(-1).s], ["done", "dropped", null, undefined, "dropped"]);
+  assert.ok(t.done_at);
+  assert.equal(setStatus(t, "dropped"), false);
+  setStatus(t, "done");
+  assert.deepEqual([t.status, t.outcome], ["done", undefined]);
+});
+
+test("a pull request opened for a task with its own branch moves it to Review; tasks without one never ask gh", async () => {
+  const v = await sidebar({ tasks: [
+    task({ id: "wt", title: "Branch work", repo: "~/dev/app", status: "doing", branch: "task/wt", worktree: "~/.herdr/worktrees/app/wt", history: [{ s: "doing", at: Date.now() - 3600000 }] }),
+    task({ id: "plain", title: "Main checkout", repo: "~/dev/app", status: "doing", history: [{ s: "doing", at: Date.now() - 3600000 }] }),
+  ] });
+  const base = H.exec;
+  H.exec = (cmd, args, opts) => (cmd === "gh" && args[0] === "pr"
+    ? { code: 0, stdout: JSON.stringify({ number: 5, url: "u", state: "OPEN", createdAt: new Date().toISOString(), statusCheckRollup: [] }), stderr: "" }
+    : base(cmd, args, opts));
+  globalThis.__taskr.books.info.prAt = 0;
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task("wt").status, "review");
+  assert.equal(v.store.task("plain").status, "doing", "no PR check for work in the main checkout");
+  assert.deepEqual([...new Set(H.execLog.filter(([c, a]) => c === "gh" && a[0] === "pr").map(([, a]) => a[2]))], ["task/wt"]);
+});
+
+test("back from waiting on someone: its next step is to follow up", async () => {
+  const v = await sidebar({ settings: { reminders: false }, tasks: [
+    task({ id: "w", title: "Census data", status: "doing", snooze: iso(0), waiting_on: "Ana" }),
+    task({ id: "w2", title: "Has a step", status: "doing", snooze: iso(0), waiting_on: "", next_step: "Merge it" }),
+  ] });
+  await tick(v);
+  assert.deepEqual([v.store.task("w").snooze, v.store.task("w").waiting_on, v.store.task("w").next_step], [null, undefined, "Follow up with Ana"]);
+  assert.equal(v.store.task("w2").next_step, "Merge it", "a step of yours stays");
+});
+
+test("outline: a folder takes another's place (reordering its own project), a task moves to another folder", async () => {
+  const { moveTaskTo } = await import("../mods/taskr/lib/actions.js");
+  const data = { projects: [{ id: "a", folders: ["~/dev/x", "~/dev/y", "~/dev/z"] }, { id: "b", folders: ["~/dev/w"] }],
+    tasks: [{ id: "1", folder: "~/dev/z", project: "a" }, { id: "2", folder: "~/dev/x", project: "a", worktree: "~/.herdr/worktrees/x/two" }] };
+  moveRepo(data, "~/dev/z", "a", "/home/me", { target: "~/dev/x" });
+  assert.deepEqual(data.projects[0].folders, ["~/dev/z", "~/dev/x", "~/dev/y"], "before it");
+  moveRepo(data, "~/dev/z", "a", "/home/me", { target: "~/dev/y", after: true });
+  assert.deepEqual(data.projects[0].folders, ["~/dev/x", "~/dev/y", "~/dev/z"], "after it, coming from above");
+  moveRepo(data, "~/dev/y", "b", "/home/me", { target: "~/dev/w" });
+  assert.deepEqual(data.projects.map((p) => p.folders), [["~/dev/x", "~/dev/z"], ["~/dev/y", "~/dev/w"]]);
+  assert.equal(moveTaskTo(data, "1", { project: "b", folder: "~/dev/w" }), true);
+  assert.deepEqual([data.tasks[0].project, data.tasks[0].folder], ["b", "~/dev/w"]);
+  assert.equal(moveTaskTo(data, "1", { project: "b", folder: null }), true, "to the project's own level");
+  assert.equal(data.tasks[0].folder, null);
+  assert.equal(moveTaskTo(data, "2", { project: "b", folder: "~/dev/w" }), false, "a task with a worktree stays with its folder");
+});
+
+test("an agent starts with its model and effort by its own flags; others get neither", async () => {
+  const { withChoices, kindOf } = await import("../mods/taskr/lib/actions.js");
+  assert.deepEqual(withChoices(["claude"], { model: "opus", effort: "xhigh" }), ["claude", "--model", "opus", "--effort", "xhigh"]);
+  assert.deepEqual(withChoices(["/usr/local/bin/codex"], { model: "gpt-6.1-sol", effort: "low" }), ["/usr/local/bin/codex", "-m", "gpt-6.1-sol", "-c", 'model_reasoning_effort="low"']);
+  assert.deepEqual(withChoices(["codex"], { effort: "max" }), ["codex"], "an effort Codex doesn't have is left out");
+  assert.deepEqual(withChoices(["opencode"], { model: "x", effort: "high" }), ["opencode"]);
+  assert.equal(kindOf(["pi"]), null);
+});
+
+test("stats: agent work split at midnight, kept per day for 120 days; a period counts tasks done and agents' work, no-plan ones too", async () => {
+  const { byDay, addWork, summary, periodDays, mergeWork } = await import("../mods/taskr/lib/stats.js");
+  const late = new Date(2026, 10, 13, 23, 30).getTime();
+  assert.deepEqual(byDay(late, late + 3600000), [["2026-11-13", 1800000], ["2026-11-14", 1800000]]);
+  const t = {};
+  for (let i = 0; i < 130; i++) addWork(t, `2026-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, "0")}`, 1000, 1);
+  assert.equal(Object.keys(t.work).length, 120, "the last 120 days");
+  const days = periodDays(7);
+  const today = days.at(-1);
+  const x = (t, project = "pa") => ({ t, project });
+  const tasks = [
+    x({ status: "done", done_at: Date.now(), work: { [today]: [3600000, 2] } }),
+    x({ status: "done", done_at: Date.now(), outcome: "dropped" }),
+    x({ status: "done", done_at: Date.now(), auto: true, work: { [today]: [600000, 3] } }, "pw"),
+    x({ status: "doing", auto: true, work: { [days[0]]: [60000, 1], "2020-01-01": [9, 9] } }, null),
+    x({ status: "done", done_at: Date.now() - 30 * 86400000 }),
+  ];
+  const s = summary(tasks, { days });
+  assert.deepEqual(s.totals, { done: 1, worked: 3, noPlan: 2, turns: 6, ms: 4260000 }, "done: closed by you, planned, not dropped; worked: any task whose agents worked");
+  assert.equal(s.days.at(-1).ms, 4200000);
+  assert.equal(s.days.at(-1).done, 1);
+  assert.deepEqual(s.projects.map((r) => r.id), ["pa", "pw", null], "by agent time");
+  assert.equal(s.since, "2020-01-01");
+  assert.deepEqual(summary(tasks, { days, project: "pw" }).totals, { done: 0, worked: 1, noPlan: 1, turns: 3, ms: 600000 });
+  const into = { work: { [today]: [1, 1] } };
+  mergeWork(into, { work: { [today]: [2, 3] } });
+  assert.deepEqual(into.work[today], [3, 4]);
+});
+
+test("the books keep each task's agent work per day and count a turn when a working agent finishes", async () => {
+  const { localDay } = await import("../mods/taskr/lib/util.js");
+  const v = await sidebar();
+  // doing1's agent t1 is working; it finishes a turn.
+  globalThis.__taskr.books.info.workSince.t1 = Date.now() - 600000;
+  H.agents.find((a) => a.address === "t1").status = "done";
+  await tick(v);
+  const w = v.store.task("doing1").work?.[localDay(Date.now())];
+  assert.ok(w && w[0] >= 590000 && w[1] === 1, JSON.stringify(w));
+  // An agent that asks for you mid-turn: its time counts, no turn yet.
+  globalThis.__taskr.books.info.workSince.t1 = Date.now() - 60000;
+  H.agents.find((a) => a.address === "t1").status = "blocked";
+  await tick(v);
+  assert.equal(v.store.task("doing1").work[localDay(Date.now())][1], 1);
 });
