@@ -62,9 +62,10 @@ jq --arg id "agent-$now" --argjson now "$now" \
 
 `settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `park_after` (minutes
 a task, planned or not, stays with its agent idle before it's parked until that agent works: 60,
-240, 1440, or 0 for never) and
-`pause_after` (days with nothing happening before a project pauses by itself: 1, 3, 7, 14, 30, or 0 for
-never). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave
+120, 240, 480, 1440, 2880, 4320, 10080, or 0 for never),
+`pause_after` (days with nothing happening before a project pauses by itself: 0.5, 1, 2, 3, 7, 14, 30,
+or 0 for never) and `bar` (what the status bar shows: `done`, `doing`, `working`, `open`, each true
+unless false). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave
 `paused_auto` and `active_at` to taskr.
 Projects list their `folders`; tasks have a `folder`. Files with the old `repos` and `repo` keys are
 still read and rewritten, and so are those from before 1.7: status `waiting` (now parked with

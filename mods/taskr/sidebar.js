@@ -315,7 +315,8 @@ export const Sidebar = {
     }
     // Any task whose agent waits for you that long, planned or not.
     for (const x of w.tasks) {
-      if (x.open && parkDue(x.t, x.top, this.sinceOf(lead(x)), now, parkAfter)) {
+      const e = lead(x);
+      if (x.open && e && parkDue(x.t, x.top, this.sinceOf(e), now, parkAfter, this.since[e.a.address]?.at ?? this.sinceOf(e))) {
         ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y && OPEN.has(y.status) && !isLater(y)) park(y, "agent"); });
       }
     }
@@ -610,7 +611,8 @@ export const Sidebar = {
 
   // ── Now ─────────────────────────────────────────────────────────────────
   nowRows(t, w) {
-    const v = nowView(w, this.store.data);
+    // When each task's agent last stopped (done and idle as one: looking at it doesn't count).
+    const v = nowView(w, this.store.data, (x) => { const e = lead(x); return e ? this.since[e.a.address]?.at ?? this.sinceOf(e) : null; });
     const rows = [];
     const order = [];
     // `shut`: folded until opened (Later: out of the way is the point).
@@ -810,12 +812,13 @@ export const Sidebar = {
           .child(svg(CHEVRON(!stackFolded)).size(10).flex_none().text_color(t.dim))
           .child(icon(view === "now" ? "zap" : "folder-tree", 13)).child(view === "now" ? S.now : S.projects)))
         .child(div().flex_1())
-        .when(view === "projects", (el) => el.child(iconButton(t, "add-proj", "folder-plus", S.newProject, () => openDialog("project"))))
-        // The board of every project from Now; in Projects each project's row has its own.
-        .when(view === "now", (el) => el.child(iconButton(t, "board", "square-kanban", S.openBoard, () => this.openBoard()))
+        // What's for every list (find a task, every project's board, stats) once, in Projects' header;
+        // with one list at a time (tabs) in either. Now makes a task, Projects a project.
+        .when(view === "projects" || !this.fixedView, (el) => el
+          .child(iconButton(t, "jump", "search", S.searchTasks, () => this.command("jump", null)))
+          .child(iconButton(t, "board", "square-kanban", S.openBoard, () => this.openBoard()))
           .child(iconButton(t, "stats", "chart-column", S.openStats, () => openStats())))
-        .child(iconButton(t, "jump", "search", S.searchTasks, () => this.command("jump", null)))
-        // A new task from Now; in Projects tasks are made in their project or folder (their own +).
+        .when(view === "projects", (el) => el.child(iconButton(t, "add-proj", "folder-plus", S.newProject, () => openDialog("project"))))
         .when(view === "now", (el) => el.child(iconButton(t, "add-task", "plus", S.newTask, () => this.openTaskForm({})))))
       .when(Boolean(this.store.error), (el) => el.child(div().px(12).py(6).text_size(11).text_color(t.blocked).child(this.store.error)))
       .when(!stackFolded, (el) => el.child(v_flex().id("taskr-list").flex_1().min_h(0).px(6).pb(10).overflow_y_scrollbar().children(rows)));

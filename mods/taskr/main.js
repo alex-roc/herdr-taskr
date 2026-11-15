@@ -147,14 +147,16 @@ export default class Taskr extends View {
     // Plan usage: looked at every few minutes, only with the window in front.
     if (d.settings.usage && window()?.active) this.usage.refresh(cx);
     const usage = d.settings.usage ? ["claude", "codex"].map((app) => this.usageItem(t, app, item)).filter(Boolean) : [];
+    // Each item as chosen in the settings; the tasks that need you always show.
+    const show = (k) => d.settings.bar?.[k] !== false;
     return h_flex().size_full().px(14).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.5)
-      .child(item("st-done", doneToday ? t.ansi2 : t.dim, "circle-check", S.doneToday(doneToday)))
-      .child(item("st-doing", over ? t.ansi3 : t.muted, null, over ? S.doingOver(doing, max) : S.doingCount(doing, max)))
+      .when(show("done"), (el) => el.child(item("st-done", doneToday ? t.ansi2 : t.dim, "circle-check", S.doneToday(doneToday))))
+      .when(show("doing"), (el) => el.child(item("st-doing", over ? t.ansi3 : t.muted, null, over ? S.doingOver(doing, max) : S.doingCount(doing, max))))
       .when(needs > 0, (el) => el.child(item("st-needs", t.blocked, "circle-alert", S.needCount(needs), () => setShared("taskr.view", "now"))))
-      .child(item("st-working", working ? t.working : t.dim, "bot", S.workingCount(working)))
+      .when(show("working"), (el) => el.child(item("st-working", working ? t.working : t.dim, "bot", S.workingCount(working))))
       .child(div().flex_1())
       .children(usage)
-      .child(item("st-open", t.dim, null, S.openCount(open.length)))
+      .when(show("open"), (el) => el.child(item("st-open", t.dim, null, S.openCount(open.length))))
       // The task panel: open when you want more about a task; selecting never opens it.
       .child(div().id("st-detail").cursor_pointer().text_color(onScreen("taskr-detail") ? t.foreground : t.dim).hover((s) => s.text_color(t.foreground))
         .tooltip(S.detailsToggle).on_click((_e, cx) => { run("layout.toggle", { id: "taskr-detail" }); cx.notify(); }).child(icon("panel-right", 13)))

@@ -41,9 +41,10 @@ export const Board = {
       cols[x.t.status]?.push(x);
     }
     for (const c of COLUMNS) {
+      // Parked ones last (out of the way, as Now's Later), each part in your order.
       cols[c].sort(c === "done"
         ? (a, b) => (b.t.done_at ?? 0) - (a.t.done_at ?? 0)
-        : (a, b) => byRank(a.t, b.t));
+        : (a, b) => (isLater(a.t) ? 1 : 0) - (isLater(b.t) ? 1 : 0) || byRank(a.t, b.t));
     }
     return cols;
   },
@@ -161,7 +162,7 @@ export const Board = {
     // A pill per board: this one lit, the others go to their tab (made when not open).
     const pill = (id, label) => {
       const here = this.boardProject === id;
-      return h_flex().id(`bp-${id ?? "all"}`).px(9).h(24).gap(6).rounded(6).items_center().text_size(12)
+      return h_flex().id(`bp-${id ?? "all"}`).flex_none().px(9).h(24).gap(6).rounded(6).items_center().text_size(12)
         .bg(here ? t.selected : t.canvas).text_color(here ? t.foreground : t.muted)
         .when(!here, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(id ? S.boardOf(label) : S.boardAll)
           .on_click(() => openBoard(id ? this.store.project(id) : null)))
@@ -171,12 +172,13 @@ export const Board = {
       // Released outside any column: the drag is off.
       .on_mouse_up("left", (_e, cx) => { if (this.pressed) { this.pressed = null; this.over = null; this.overCard = null; cx.notify(); } })
       .child(h_flex().px(14).h(44).flex_none().gap(6).items_center()
-        .child(div().pr(8).text_size(14).font_semibold().child(S.board))
-        .child(pill(null, S.allProjects))
-        // Paused projects have no pill, but for the one this board is.
-        .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.boardProject).map((p) => pill(p.id, p.name)))
-        .child(div().flex_1())
-        .child(div().text_size(11).text_color(t.dim).child(S.boardHint)))
+        .child(div().flex_none().pr(8).text_size(14).font_semibold().child(S.board))
+        // One row of pills that scrolls sideways when they don't fit.
+        .child(h_flex().id("board-pills").flex_1().min_w(0).gap(6).items_center().overflow_x_scrollbar()
+          .child(pill(null, S.allProjects))
+          // Paused projects have no pill, but for the one this board is.
+          .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.boardProject).map((p) => pill(p.id, p.name))))
+        .child(div().flex_none().pl(8).text_size(11).text_color(t.dim).child(S.boardHint)))
       .child(h_flex().id("board-cols").flex_1().min_h(0).px(14).pb(14).gap(10).items_start().overflow_x_scrollbar()
         .children(COLUMNS.map((c) => this.column(t, c, cols[c], wip))));
   },

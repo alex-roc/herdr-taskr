@@ -57,7 +57,7 @@ then what's parked. Each task once.
 | Section | What's in it |
 |---|---|
 | **Needs you** | Tasks whose agent asks for you, with its question right in the row |
-| **Finished** | Tasks whose agent finished its turn and waits for a word from you: the ones you haven't seen first, in bold; then the ones you have (Idle) |
+| **Finished** | Tasks whose agent finished its turn and waits for a word from you: the ones you haven't seen first, in bold; then the ones you have (Idle). Only the turns you haven't decided on: change a task's stage after its turn ended (Next, to do it later) and it goes to that section, until another turn ends |
 | **Working** | Tasks with an agent at work |
 | **To review** | Tasks in Review |
 | **In progress** | Work under way with no agent working or waiting for you (its agent quit, or it never had one); your limit (`In progress 2/6`) is in the status bar |
@@ -96,7 +96,7 @@ under Working or Finished as its agent is. Nothing
 else says when it's done, so when its agent quits (30 seconds after) or its tab closes (a minute
 after), it goes to Done (one in Review stays there), and *Resume agent* picks it up; a
 tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again takes the
-same task back up. With many agents open, *Park idle agents* in the settings (1 hour, 4 hours, a day;
+same task back up. With many agents open, *Park idle agents* in the settings (from an hour to a week;
 off by default) parks any task whose agent has been idle that long, planned or not, until the agent works again.
 A planned task only goes Done by your hand. *Done today* in the status bar counts every task done,
 planned or not (not dropped ones). So you can work only with terminals and agents and still get the list, the board,
@@ -145,7 +145,7 @@ where they are and how long in their state. With no folder, a terminal opens in 
 model · effort · context, its folder and state; split, zoom and close while the pointer is on it.
 Click it to select its task.
 
-**Board**: a kanban tab (`cmd-shift-b`, or the board button in Now) with a column per stage: Inbox,
+**Board**: a kanban tab (`cmd-shift-b`, or the board button in the lists' header) with a column per stage: Inbox,
 Next, In progress (with your limit; parked cards are dimmed and don't count), Review and Done (last 7 days). Drag a card to another column to change its stage, or onto another card to put it there; click to open it,
 right-click for its menu. Every board is a tab: **Board** for every project, and **Board · Acme** for
 each project, with only its tasks and agents. The pills at the top (All · Acme · …) go from one board
@@ -177,7 +177,7 @@ worktree (a branch with unmerged commits is kept).
 After a restart, or once you closed its tab, *Resume agent* (or `r`) runs `claude --resume <id>` or
 `codex resume <id>` in its folder, tied to the task again.
 
-**Stats** (the chart button in Now, *Stats* in a project's menu, or `taskr.stats`): a tab with today
+**Stats** (the chart button in the lists' header, *Stats* in a project's menu, or `taskr.stats`): a tab with today
 or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks done; *Worked
 on*, the tasks whose agents worked (planned or not, every task counts alike); *Turns*, how many times an agent finished its turn; *Agent time*, how long they worked. A
 chart per day for agent time and one for done tasks, and a table by project. Done tasks count
@@ -236,10 +236,11 @@ Your other layouts are untouched; switch back the same way.
 
 Settings (the gear in the status bar): Now and Projects as tabs or **stacked** (both at once, one
 above the other, as Herdr's spaces and agents), how many tasks can be in progress before the status bar
-warns you, after how many days a task in progress shows its time in yellow, which agent *Start agent* runs, whether tasks whose agent stays idle get parked (*Park idle agents*), after how many quiet days a project pauses by itself, whether
-the detail lists every change of stage (*Activity*, off by default) and whether the status bar shows
-plan usage. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
-it to its header (the other takes the room), and a double click on the name gives it all the room.
+warns you, after how many days a task in progress shows its time in yellow, which agent *Start agent* runs, whether tasks whose agent stays idle get parked (*Park idle agents*), after how long a quiet project pauses by itself, whether
+the detail lists every change of stage (*Activity*, off by default), what the status bar shows (done
+today, in progress, working, open tasks) and whether it shows plan usage, in groups. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
+it to its header (the other takes the room), and a double click on the name gives it all the room. Stacked, find a task, the board and Stats
+are in Projects' header (Now keeps its +); as tabs, in either.
 
 **After a restart**: Herdr brings every terminal back, as a shell in its last folder. taskr
 remembers which Claude Code or Codex conversation each one had (`data/taskr/terminals.json`), and

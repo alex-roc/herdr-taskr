@@ -76,11 +76,13 @@ function setup() {
   const p1 = herdr("space.new", { name: "Acme", folder: ROOT, tab: "map services", argv: agent("Map the services across both repos", "idle") });
   // Optionally, a real agent tab of yours shown as a demo task (its real model and effort): --adopt <tab id>.
   const adopt = process.argv.includes("--adopt") ? process.argv[process.argv.indexOf("--adopt") + 1] : null;
-  // Your other agents' tabs go in an archived task, shown nowhere: not tracked as demo tasks,
-  // not in the screenshots.
+  // Every other tab of yours goes in an archived task, shown nowhere: not tracked as demo tasks,
+  // not in the screenshots. All of them: an agent that reports no state to Herdr (one resumed
+  // after a restart can) has neither an app nor a status here, and a plain terminal would show
+  // under No project.
   const demoSpaces = new Set([w1.space, a1.space, b1.space, p1.space]);
   const yours = JSON.parse(sh("herdr-app", ["ls"])).spaces.filter((s) => !demoSpaces.has(s.id))
-    .flatMap((s) => s.tabs.filter((t) => t.id !== adopt && (t.terminals ?? []).some((x) => x.app || x.status)).map((t) => t.id));
+    .flatMap((s) => s.tabs.filter((t) => t.id !== adopt).map((t) => t.id));
   writeFileSync(STATE, JSON.stringify({ spaces: [w1.space, a1.space, b1.space, p1.space] }));
 
   mkdirSync(dirname(FILE), { recursive: true });

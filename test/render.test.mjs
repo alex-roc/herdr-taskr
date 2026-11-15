@@ -268,6 +268,31 @@ test("later dialog: a word for a day puts the task off", async () => {
   assert.deepEqual(H.closed, ["ov1"]);
 });
 
+test("settings: in groups; more times to park and pause; the status bar's items turn on and off", async () => {
+  const { view } = await mount({ dialog: "settings", overlay: "ov1" });
+  await settle();
+  const words = text(render(view).tree);
+  for (const g of ["NOW AND LISTS", "LIMITS", "STATUS BAR", "NOTIFICATIONS AND DETAILS", "AGENTS"]) assert.match(words, new RegExp(g));
+  assert.match(words, /2 h/);
+  assert.match(words, /1 week/);
+  assert.match(words, /12 h/);
+  const node = (id) => walk(render(view).tree).find((n) => n.id === id);
+  node("bar-open").handlers.on_click({}, cx());
+  await settle();
+  assert.equal(view.store.data.settings.bar.open, false);
+  node("park-480").handlers.on_click({}, cx());
+  await settle();
+  assert.equal(view.store.data.settings.park_after, 480);
+});
+
+test("status bar: shows what the settings choose; the tasks that need you always", async () => {
+  const { view } = await mount({ role: "status" });
+  await view.store.update((d) => { d.settings.bar = { done: false, doing: true, working: true, open: false }; });
+  const ids = walk(render(view).tree).map((n) => n.id);
+  assert.ok(!ids.includes("st-done") && !ids.includes("st-open") && ids.includes("st-doing") && ids.includes("st-working"));
+  assert.ok(ids.includes("st-needs"), "needs you, always");
+});
+
 test("status bar: a button opens and closes the task panel", async () => {
   const { view } = await mount({ role: "status" });
   H.runs.length = 0;
@@ -295,12 +320,35 @@ test("boards: one tab per project and one for all, the pills go from one to anot
   assert.deepEqual(H.runs.at(-1), ["pane.focus", { pane: "pB" }]);
 });
 
+test("board: parked cards go last in their column; the pills scroll sideways in one row", async () => {
+  const { view } = await mount({ role: "board" }, () => {
+    const d = JSON.parse(H.files.get(FILE()));
+    d.tasks.push(task({ id: "pk1", title: "Parked", status: "doing", rank: -5, snooze: "someday" }));
+    d.tasks.push(task({ id: "dg2", title: "Second", status: "doing", rank: 50 }));
+    H.files.set(FILE(), JSON.stringify(d));
+  });
+  const tree = walk(render(view).tree);
+  // Cards in the order drawn: the in-progress ones.
+  const cards = tree.map((n) => n.id).filter((id) => ["card-pk1", "card-dg2", "card-doing1"].includes(id));
+  assert.equal(cards.at(-1), "card-pk1", "parked last, though first in your order");
+  assert.ok(cards.indexOf("card-dg2") < cards.indexOf("card-pk1"));
+  const ids = tree.map((n) => n.id);
+  assert.ok(ids.includes("board-pills") && ids.indexOf("bp-all") > ids.indexOf("board-pills"), "the pills in their own row");
+});
+
 test("a project's row shows its actions while the pointer is on it", async () => {
   const { view } = await mount({ role: "sidebar" });
   H.shared["taskr.view"] = "projects";
   const ids = () => walk(render(view).tree).map((n) => n.id).filter(Boolean);
   assert.ok(!ids().includes("pboard-p:pa"), "out of the way");
-  assert.ok(!ids().includes("board"), "no board button in Projects' header: each project has its own");
+  // What's for every list (find, every project's board, stats) sits in Projects' header; Now only
+  // makes a task when both are stacked.
+  assert.ok(["jump", "board", "stats", "add-proj"].every((i) => ids().includes(i)));
+  view.fixedView = "now";
+  H.shared["taskr.view"] = "now";
+  assert.ok(ids().includes("add-task") && !["jump", "board", "stats"].some((i) => ids().includes(i)), "stacked: Now has only its +");
+  view.fixedView = null;
+  H.shared["taskr.view"] = "projects";
   walk(render(view).tree).find((n) => n.id === "p:pa").handlers.on_hover(true, cx());
   assert.ok(["pboard-p:pa", "pterm-p:pa", "padd-p:pa", "pmore-p:pa"].every((i) => ids().includes(i)));
 });

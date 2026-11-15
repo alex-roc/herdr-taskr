@@ -26,10 +26,11 @@ export const adoptStage = (had) => (had?.status === "review" ? "review" : "doing
 export const quitStage = (t) => (t?.status === "review" ? "review" : "done");
 
 // A task whose agent you've seen and that waits for a word from you, for longer than `minutes`
-// (0: never): parked until its agent works again. Planned or not: every agent is a task.
-export function parkDue(t, top, since, now, minutes) {
+// (0: never): parked until its agent works again. Planned or not: every agent is a task. One you
+// decided on since (a stage chosen after its agent stopped, `turnAt`: Next, say) isn't waiting.
+export function parkDue(t, top, since, now, minutes, turnAt = since) {
   return minutes > 0 && OPEN.has(t?.status) && !isLater(t) && top === "idle"
-    && Boolean(since) && now - since > minutes * 60000;
+    && Boolean(since) && now - since > minutes * 60000 && (t.history?.at(-1)?.at ?? 0) <= (turnAt ?? since);
 }
 
 // A pull request opened since the task went in progress: ready for review. Only for a task with its
@@ -49,12 +50,15 @@ export const stale = (t, top, last, now, staleMs) =>
 // Where a task shows in Now: what its agent asks of you first (a question, a turn it finished,
 // seen or not), what it's doing, then parked, then its stage. Closed tasks aren't in Now. A task in
 // progress (doing) shows there only with no agent waiting for you: in progress isn't "doing now".
-export function nowSection(x) {
+// Finished holds the turns you haven't decided on: its stage changed since its agent's turn ended
+// (`turnAt`; Next for later, say), it goes to that stage, until another turn ends.
+export function nowSection(x, turnAt = null) {
   if (!OPEN.has(x.t.status)) return null;
   if (x.top === "blocked") return "needs";
   if (x.top === "working") return "working";
-  if (x.top === "done") return "finished";
+  const decided = turnAt != null && (x.t.history?.at(-1)?.at ?? 0) > turnAt;
+  if (x.top === "done" && !decided) return "finished";
   if (isLater(x.t)) return "later";
-  if (x.top === "idle") return "finished";
+  if (x.top === "idle" && !decided) return "finished";
   return x.t.status;
 }

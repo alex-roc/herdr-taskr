@@ -30,7 +30,7 @@ export const Stats = {
     const n = PERIODS.find(([k]) => k === this.statsPeriod)?.[1] ?? 7;
     const days = periodDays(n);
     const sum = summary(this.world.tasks, { days, project: this.statsProject });
-    const pill = (id, label, on, onClick, iconName = null) => h_flex().id(id).px(9).h(24).gap(6).rounded(6).items_center().text_size(12)
+    const pill = (id, label, on, onClick, iconName = null) => h_flex().id(id).flex_none().px(9).h(24).gap(6).rounded(6).items_center().text_size(12)
       .bg(on ? t.selected : t.canvas).text_color(on ? t.foreground : t.muted)
       .when(!on, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { onClick(); cx.notify(); }))
       .when(Boolean(iconName), (el) => el.child(icon(iconName, 12))).child(label);
@@ -68,13 +68,15 @@ export const Stats = {
     // Agent work is kept from the first day taskr saw it: say so when the period reaches before.
     const partial = !sum.since || sum.since > days[0];
     return v_flex().id("taskr-stats").size_full().min_h(0).bg(t.canvas).text_color(t.foreground)
-      .child(h_flex().px(14).h(44).flex_none().gap(6).items_center().flex_wrap()
-        .child(div().pr(8).text_size(14).font_semibold().child(S.stats))
+      // The periods, then the projects in one row that scrolls sideways when they don't fit (as the board's).
+      .child(h_flex().px(14).h(44).flex_none().gap(6).items_center()
+        .child(div().flex_none().pr(8).text_size(14).font_semibold().child(S.stats))
         .children(PERIODS.map(([k]) => pill(`sp-${k}`, S.statsPeriod[k], this.statsPeriod === k, () => setPeriod(k))))
-        .child(div().w(12))
-        .child(pill("spj-all", S.allProjects, !this.statsProject, () => { this.statsProject = null; }))
-        .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.statsProject)
-          .map((p) => pill(`spj-${p.id}`, p.name, this.statsProject === p.id, () => { this.statsProject = p.id; }, "layers"))))
+        .child(div().flex_none().w(12))
+        .child(h_flex().id("st-pills").flex_1().min_w(0).gap(6).items_center().overflow_x_scrollbar()
+          .child(pill("spj-all", S.allProjects, !this.statsProject, () => { this.statsProject = null; }))
+          .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.statsProject)
+            .map((p) => pill(`spj-${p.id}`, p.name, this.statsProject === p.id, () => { this.statsProject = p.id; }, "layers")))))
       .child(v_flex().id("st-body").flex_1().min_h(0).px(14).pb(16).gap(12).overflow_y_scrollbar()
         .child(h_flex().gap(10).flex_wrap().items_stretch()
           .child(tile("st-done", S.statsDone, String(sum.totals.done), S.statsDoneSub))

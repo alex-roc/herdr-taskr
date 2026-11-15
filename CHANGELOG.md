@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.7.7 — 2026-11-15
+
+### Changed
+- **Finished holds only the turns you haven't decided on.** A task whose agent stopped stayed under
+  Finished whatever you did with it: moving it to Next, to do it later, changed nothing on screen.
+  Now a stage changed after its agent's turn ended puts it in that stage's section (Next is then the
+  list of what's pending), until its agent finishes another turn.
+- **A stage chosen brings back a task parked until its agent works.** Parked by *Park idle agents*,
+  a task moved to Next stayed in Later. Now any stage chosen unparks it (a day you set stays), and a
+  task you decided on isn't parked again while its agent stays idle: it isn't waiting for you.
+- **Settings in groups**, in two columns that fit without scrolling (Now and lists, Limits, Status
+  bar, Notifications and details, Agents), with
+  more times to park idle agents (1, 2, 4, 8 hours, 1, 2, 3 days, a week) and to pause quiet projects
+  (12 hours to 30 days).
+- **Stacked, Now and Projects no longer repeat icons**: find, the board and Stats are in Projects'
+  header, Now keeps its +.
+- **The board puts parked cards last** in their column, and its project pills, like Stats', stay in
+  one row that scrolls sideways instead of spilling onto the cards.
+
+### Added
+- **What the status bar shows**, in the settings: done today, in progress, working, open tasks (the
+  tasks that need you always show).
+
 ## 1.7.6 — 2026-11-15
 
 ### Added

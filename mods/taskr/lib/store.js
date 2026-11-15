@@ -16,9 +16,11 @@ export const FILE = () => `${DIR()}/tasks.json`;
 
 // `park_after`: minutes a task (planned or not) stays with its agent idle (seen, waiting
 // for you) before it's parked until that agent works again; 0: never (the default).
-export const PARK_AFTER = [0, 60, 240, 1440];
+export const PARK_AFTER = [0, 60, 120, 240, 480, 1440, 2880, 4320, 10080];
 // `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.
-export const PAUSE_AFTER = [0, 1, 3, 7, 14, 30];
+export const PAUSE_AFTER = [0, 0.5, 1, 2, 3, 7, 14, 30];
+// What the status bar shows (the ones that need you always do).
+export const BAR_ITEMS = ["done", "doing", "working", "open"];
 export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, park_after: 0, pause_after: 1, activity: false };
 const EMPTY = () => ({ version: 1, settings: { ...DEFAULTS }, projects: [], tasks: [] });
 
@@ -167,6 +169,8 @@ export function parse(text) {
   settings.park_after = PARK_AFTER.includes(num(settings.park_after, -1)) ? num(settings.park_after) : DEFAULTS.park_after;
   settings.pause_after = PAUSE_AFTER.includes(num(settings.pause_after, -1)) ? num(settings.pause_after) : DEFAULTS.pause_after;
   settings.activity = settings.activity === true; // the detail's list of status changes: off unless turned on
+  const bar = settings.bar && typeof settings.bar === "object" ? settings.bar : {};
+  settings.bar = Object.fromEntries(BAR_ITEMS.map((k) => [k, bar[k] !== false])); // every item shown unless turned off
   const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
   return {
     ...d,
@@ -335,7 +339,9 @@ export function setStatus(t, status, now = Date.now()) {
   delete t.idle;
   t.updated = now;
   t.done_at = t.status === "done" ? now : null;
-  if (["doing", "done"].includes(t.status)) unpark(t);
+  // Starting or closing unparks; any stage does for one parked until its agent works (parked by
+  // taskr for being idle): a stage chosen is a decision about it. A day you set stays.
+  if (["doing", "done"].includes(t.status) || t.snooze === "agent") unpark(t);
   (t.history ??= []).push({ s: status, at: now });
   if (t.history.length > 60) t.history.splice(0, t.history.length - 60);
   return true;

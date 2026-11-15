@@ -127,6 +127,11 @@ test("files from before: repos and repo read as folders and folder, deleted task
   assert.equal(d.settings.pause_after, 1);
   assert.equal(parse(JSON.stringify({ settings: { park_after: 7 } })).settings.park_after, 0, "only the offered choices");
   assert.equal(parse(JSON.stringify({ settings: { park_after: 240 } })).settings.park_after, 240);
+  assert.equal(parse(JSON.stringify({ settings: { park_after: 120 } })).settings.park_after, 120, "more times: hours and days");
+  assert.equal(parse(JSON.stringify({ settings: { park_after: 10080 } })).settings.park_after, 10080);
+  assert.equal(parse(JSON.stringify({ settings: { pause_after: 0.5 } })).settings.pause_after, 0.5, "half a day");
+  assert.deepEqual(d.settings.bar, { done: true, doing: true, working: true, open: true }, "the status bar shows everything unless turned off");
+  assert.deepEqual(parse(JSON.stringify({ settings: { bar: { open: false, x: 1 } } })).settings.bar, { done: true, doing: true, working: true, open: false });
   assert.equal("review_after" in parse(JSON.stringify({ settings: { review_after: 60 } })).settings, false);
   assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.park_after, 0);
 });
@@ -943,6 +948,9 @@ test("park idle agents: off by default; when set, any task waiting on you is par
   assert.ok(nowView(v.world, v.store.data).finished.some((x) => x.t.id === id), "waiting for a word from you");
   // Four hours: parked until its agent works, and so is the planned one (review1, t8 idle as long):
   // every agent is a task.
+  // Their turns ended five hours ago, as taskr saw it too (before the task was made or touched).
+  for (const a of ["t4", "t8"]) v.since[a] = { s: "idle", at: Date.now() - 5 * 3600000 };
+  await v.store.update((d) => { for (const t of d.tasks) t.history = (t.history ?? []).map((h) => ({ ...h, at: Date.now() - 6 * 3600000 })); });
   await v.store.update((d) => { d.settings.park_after = 240; });
   await tick(v);
   assert.equal(v.store.task(id).snooze, "agent");
@@ -1434,10 +1442,20 @@ test("flow: the turn writes the stage only when an agent starts work; quitting c
   assert.equal(nowSection(x({ status: "doing", snooze: "agent" }, "idle")), "later");
   assert.equal(nowSection(x({ status: "doing" }, "idle")), "finished", "an idle agent waits for you: not 'doing'");
   assert.equal(nowSection(x({ status: "doing" })), "doing", "in progress, no agent waiting");
+  // Finished holds the turns you haven't decided on: moved to Next after the turn ended, it's in Next
+  // (a pending one), until another turn ends; moved before it, still Finished.
+  const turn = now - 3600000;
+  const moved = (s, at) => ({ status: s, history: [{ s: "doing", at: turn - 9000 }, { s, at }] });
+  assert.equal(nowSection(x(moved("next", turn + 60000), "idle"), turn), "next");
+  assert.equal(nowSection(x(moved("next", turn + 60000), "done"), turn), "next", "even unseen: you chose");
+  assert.equal(nowSection(x(moved("doing", turn + 60000), "idle"), turn), "doing");
+  assert.equal(nowSection(x(moved("next", turn - 60000), "idle"), turn), "finished", "a turn ended since");
+  assert.equal(nowSection(x(moved("next", turn + 60000), "idle")), "finished", "no turn time known: as before");
   assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 60), true);
   assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 0), false, "never by default");
   assert.equal(parkDue({ status: "doing" }, "idle", now - 2 * 3600000, now, 60), true, "a planned task alike");
   assert.equal(parkDue({ status: "doing", auto: true }, "done", now - 2 * 3600000, now, 60), false, "not before you've seen it");
+  assert.equal(parkDue({ status: "next", history: [{ s: "next", at: now - 3600000 }] }, "idle", now - 2 * 3600000, now, 60), false, "decided on since it stopped");
 });
 
 test("setStatus: Dropped is Done with an outcome; Done again clears it; starting or closing unparks", () => {
@@ -1449,6 +1467,13 @@ test("setStatus: Dropped is Done with an outcome; Done again clears it; starting
   assert.equal(setStatus(t, "dropped"), false);
   setStatus(t, "done");
   assert.deepEqual([t.status, t.outcome], ["done", undefined]);
+  // Parked until its agent works: any stage chosen brings it back; a day you set stays.
+  const pa = { status: "doing", snooze: "agent", history: [] };
+  setStatus(pa, "next");
+  assert.equal(pa.snooze, null);
+  const pd = { status: "doing", snooze: "2030-01-01", history: [] };
+  setStatus(pd, "next");
+  assert.equal(pd.snooze, "2030-01-01");
 });
 
 test("a pull request opened for a task with its own branch moves it to Review; tasks without one never ask gh", async () => {

@@ -19,7 +19,9 @@ every task by stage.
   - **Now**: collapsible sections, header 11px medium in the section's color plus a count and a
     chevron, each task in one (`nowSection` in `lib/flow.js`): what the agents ask of you, then the
     stages, then what's parked. Needs you (`blocked`: its agent asks), Finished (`done`: its agent
-    finished its turn, unseen ones first and in bold, then the Idle ones it waits on you), Working
+    finished its turn, unseen ones first and in bold, then the Idle ones it waits on you; only until
+    you decide: its stage changed after the turn ended, its last `history` entry later than when its
+    agent last stopped (`since`, done and idle as one), puts it in that stage's section), Working
     (`working`), To review (`done`), In progress (`working`: stage `doing` with no agent working or
     waiting for you), Next (foreground, first 7, then "N more" which opens Projects), Inbox (`dim`,
     first 5). Last, **Later** (`dim`, folded until opened): parked tasks, soonest back first, then
@@ -218,12 +220,15 @@ every task by stage.
   Dropped); due (today, tomorrow, fri,
   +3d, 2w, 12-24, 2026-12-24, with "in 3d · 2026-11-10" beside the label, red border when not
   understood), estimate, next step, notes. Enter saves once.
-- Settings: Park idle agents (never, 1 h, 4 h, a day; `park_after`), Now and Projects (Tabs / Stacked,
-  when the layout has `taskr-lists`), Pause quiet projects (never, 1, 3, 7, 14, 30 days;
-  `pause_after`), steppers for the In-progress limit (1–20, `wip`) and Days without movement (1–60,
-  `stale_days`), Agents after a restart, Reminders, Activity in the details (off by default) and Plan
-  usage (off by default) On/Off,
-  and the installed agents as pills (the chosen one stays even if not installed).
+- Settings, in groups, each under a title (10.5px semibold `dim`, uppercase, a line below):
+  **Now and lists**: Now and Projects (Tabs / Stacked, when the layout has `taskr-lists`), Park idle
+  agents (never, 1 h, 2 h, 4 h, 8 h, 1 day, 2 days, 3 days, 1 week; `park_after`), Pause quiet
+  projects (never, 12 h, 1, 2, 3, 7, 14, 30 days; `pause_after`). **Limits**: steppers for the
+  In-progress limit (1–20, `wip`) and Days without movement (1–60, `stale_days`). **Status bar**:
+  what it shows (Done today, In progress, Working, Open tasks; `bar`, each a toggle; the tasks that
+  need you always) and Plan usage (off by default). **Notifications and details**: Reminders,
+  Activity in the details (off by default). **Agents**: Agents after a restart, and the installed
+  agents as pills (the chosen one stays even if not installed).
 - Resume: while a local Claude Code or Codex agent runs, its session id and folder are kept on the
   task (`sessions`, newest 5). Resume runs the agent's `run` + `--resume <id>` (Codex: `resume <id>`)
   in that folder, with no first message, through the same launch-and-tie path as Start agent.

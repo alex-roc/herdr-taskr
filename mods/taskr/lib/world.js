@@ -171,12 +171,13 @@ export const doingCount = (w) => w.tasks.filter((x) => x.t.status === "doing" &&
 
 export const NOW_SECTIONS = ["needs", "finished", "working", "review", "doing", "next", "inbox", "later"];
 
-export function nowView(w, data) {
+// `turnAt(x)`: when its agent's last turn ended (see flow.js `nowSection`).
+export function nowView(w, data, turnAt = () => null) {
   const lists = Object.fromEntries(NOW_SECTIONS.map((k) => [k, []]));
   // A paused project's work is out of Now, but for an agent that needs you or works.
   const paused = pausedProjects(data);
   for (const x of w.tasks) {
-    const at = nowSection(x);
+    const at = nowSection(x, turnAt(x));
     if (!at || (paused.has(x.project) && !["blocked", "working"].includes(x.top))) continue;
     lists[at].push(x);
   }

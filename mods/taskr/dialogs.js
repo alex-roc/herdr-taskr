@@ -7,7 +7,7 @@ import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui
 import { props, closeOverlay, theme, home, spaces, panes, shared, setShared, run, notify, knownAgents, terminals, layout, pickFolder } from "herdr";
 import { untrackedName } from "./lib/world.js";
 import { S } from "./strings.js";
-import { newTask, newProject, setStatus, setPaused, kept, toTop, park, unpark, PARK_AFTER, PAUSE_AFTER } from "./lib/store.js";
+import { newTask, newProject, setStatus, setPaused, kept, toTop, park, unpark, PARK_AFTER, PAUSE_AFTER, BAR_ITEMS } from "./lib/store.js";
 import { CHOICES, stageOf, tilde, untilde, base, byRank, OPEN, parseDue, dueLabel, issueLabel, isLater, laterLabel, parseLater } from "./lib/util.js";
 import { linearKey, linearIssues } from "./lib/linear.js";
 import { place, repoState } from "./lib/git.js";
@@ -678,33 +678,39 @@ export const Dialogs = {
     const setting = (label, hint, el) => v_flex().gap(6)
       .child(div().text_size(12).font_medium().child(label)).child(el)
       .child(div().text_size(11).text_color(t.dim).child(hint));
-    const onOff = (key) => h_flex().gap(4).children([[true, S.on], [false, S.off]].map(([v, label]) =>
-      h_flex().id(`${key}-${v}`).h(26).px(10).rounded(6).items_center().text_size(11.5).cursor_pointer()
-        .border_1().border_color(s[key] === v ? t.accent : t.input).bg(s[key] === v ? t.accent + "26" : t.background)
-        .hover((x) => x.bg(t.hover)).on_click(set({ [key]: v })).child(label)));
+    // A choice among a few: lit when it's the one set.
+    const chip = (id, label, on, onClick) => h_flex().id(id).h(26).px(10).rounded(6).items_center().text_size(11.5).cursor_pointer()
+      .border_1().border_color(on ? t.accent : t.input).bg(on ? t.accent + "26" : t.background)
+      .hover((x) => x.bg(t.hover)).on_click(onClick).child(label);
+    const onOff = (key) => h_flex().gap(4).children([[true, S.on], [false, S.off]].map(([v, label]) => chip(`${key}-${v}`, label, s[key] === v, set({ [key]: v }))));
+    // A group: its title, then its settings.
+    const group = (id, ...items) => v_flex().gap(12).pt(4)
+      .child(div().pb(2).text_size(10.5).font_semibold().text_color(t.dim).border_b(1).border_color(t.border).child(S.settingsGroups[id].toUpperCase()))
+      .children(items.filter(Boolean));
+    // Two columns: how the lists behave and their limits; what's shown and the agents.
     return this.withFooter(t, v_flex().gap(14)
       .child(this.title(t, S.settingsTitle))
-      .child(setting(S.parkAfter, S.parkAfterHint, h_flex().gap(4).flex_wrap().children(PARK_AFTER.map((m) =>
-        h_flex().id(`park-${m}`).h(26).px(10).rounded(6).items_center().text_size(11.5).cursor_pointer()
-          .border_1().border_color(s.park_after === m ? t.accent : t.input).bg(s.park_after === m ? t.accent + "26" : t.background)
-          .hover((x) => x.bg(t.hover)).on_click(set({ park_after: m })).child(S.parkAfterLabel(m))))))
-      .when(Boolean(lists), (el) => el.child(setting(S.listsLayout, S.listsLayoutHint, h_flex().gap(4).children([["taskr-sidebar", S.listsTabs], ["taskr-split", S.listsStacked]].map(([child, label]) => {
-        const on = (lists.active ?? lists.children?.[0]?.id) === child;
-        return h_flex().id(`lists-${child}`).h(26).px(10).rounded(6).items_center().text_size(11.5).cursor_pointer()
-          .border_1().border_color(on ? t.accent : t.input).bg(on ? t.accent + "26" : t.background)
-          .hover((x) => x.bg(t.hover)).on_click(() => run("layout.select", { stack: "taskr-lists", child })).child(label);
-      })))))
-      .child(setting(S.pauseAfter, S.pauseAfterHint, h_flex().gap(4).flex_wrap().children(PAUSE_AFTER.map((n) =>
-        h_flex().id(`pause-${n}`).h(26).px(10).rounded(6).items_center().text_size(11.5).cursor_pointer()
-          .border_1().border_color(s.pause_after === n ? t.accent : t.input).bg(s.pause_after === n ? t.accent + "26" : t.background)
-          .hover((x) => x.bg(t.hover)).on_click(set({ pause_after: n })).child(S.pauseAfterLabel(n))))))
-      .child(setting(S.wipLimit, S.wipLimitHint, stepper("wip", s.wip, 1, 20, String(s.wip), "wip")))
-      .child(setting(S.staleDays, S.staleDaysHint, stepper("stale", s.stale_days, 1, 60, S.days(s.stale_days), "stale_days")))
-      .child(setting(S.revive, S.reviveHint, onOff("revive")))
-      .child(setting(S.reminders, S.remindersHint, onOff("reminders")))
-      .child(setting(S.showActivity, S.showActivityHint, onOff("activity")))
-      .child(setting(S.showUsage, S.showUsageHint, onOff("usage")))
-      .child(setting(S.defaultAgent, S.defaultAgentHint, this.agentList == null ? div().text_color(t.dim).child(S.loading)
+      .child(h_flex().gap(28).items_start()
+      .child(v_flex().flex_1().min_w(0).gap(14)
+      .child(group("lists",
+        lists ? setting(S.listsLayout, S.listsLayoutHint, h_flex().gap(4).children([["taskr-sidebar", S.listsTabs], ["taskr-split", S.listsStacked]].map(([child, label]) =>
+          chip(`lists-${child}`, label, (lists.active ?? lists.children?.[0]?.id) === child, () => run("layout.select", { stack: "taskr-lists", child }))))) : null,
+        setting(S.parkAfter, S.parkAfterHint, h_flex().gap(4).flex_wrap().children(PARK_AFTER.map((m) => chip(`park-${m}`, S.parkAfterLabel(m), s.park_after === m, set({ park_after: m }))))),
+        setting(S.pauseAfter, S.pauseAfterHint, h_flex().gap(4).flex_wrap().children(PAUSE_AFTER.map((n) => chip(`pause-${n}`, S.pauseAfterLabel(n), s.pause_after === n, set({ pause_after: n })))))))
+      .child(group("limits",
+        setting(S.wipLimit, S.wipLimitHint, stepper("wip", s.wip, 1, 20, String(s.wip), "wip")),
+        setting(S.staleDays, S.staleDaysHint, stepper("stale", s.stale_days, 1, 60, S.days(s.stale_days), "stale_days")))))
+      .child(v_flex().flex_1().min_w(0).gap(14)
+      .child(group("bar",
+        setting(S.statusBar, S.statusBarHint, h_flex().gap(4).flex_wrap().children(BAR_ITEMS.map((k) =>
+          chip(`bar-${k}`, S.barItems[k], s.bar?.[k] !== false, set({ bar: { ...s.bar, [k]: s.bar?.[k] === false } }))))),
+        setting(S.showUsage, S.showUsageHint, onOff("usage"))))
+      .child(group("notices",
+        setting(S.reminders, S.remindersHint, onOff("reminders")),
+        setting(S.showActivity, S.showActivityHint, onOff("activity"))))
+      .child(group("agents",
+        setting(S.revive, S.reviveHint, onOff("revive")),
+        setting(S.defaultAgent, S.defaultAgentHint, this.agentList == null ? div().text_color(t.dim).child(S.loading)
         : h_flex().gap(4).flex_wrap().children([...agents, ...(known ? [] : [{ key: s.agent, name: s.agent, installed: false }])].map((a) => {
           const on = a.key === s.agent;
           return h_flex().id(`ag-${a.key}`).h(26).px(9).gap(6).rounded(6).items_center().text_size(11.5).cursor_pointer()
@@ -712,7 +718,7 @@ export const Dialogs = {
             .text_color(a.installed ? t.foreground : t.dim).hover((x) => x.bg(t.hover))
             .on_click(set({ agent: a.key }))
             .child(a.name).when(!a.installed, (el) => el.child(div().text_size(10).text_color(t.dim).child(S.notInstalled)));
-        })))), [button(t, "close", S.close, close, { primary: true })]);
+        }))))))), [button(t, "close", S.close, close, { primary: true })]);
   },
 
   // ── Jump palette ───────────────────────────────────────────────────────

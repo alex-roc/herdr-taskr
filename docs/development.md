@@ -82,8 +82,9 @@ for the whole Acme project (its own space, `~/taskr-demo`), and reminders off (n
 
 Screenshots, with the window maximized (`herdr-app do window.maximize`, again to put it back: a window
 in split view is half as wide) and the sidebar at 330px (`layout.resize {id: "sidebar", px: 330}`);
-`herdr-app shot` gives a 2× frame (4480×2460 on a 4.5K display). The demo puts your own agents' tabs in an archived
-task, so they're neither made into no-plan tasks nor drawn; its agents' addresses change every run
+`herdr-app shot` gives a 2× frame (4480×2460 on a 4.5K display). The demo puts every tab of yours in an archived
+task, so they're neither made into no-plan tasks nor drawn (all of them: an agent that reports no
+state has no app or status in `herdr-app ls`, and a plain terminal would show under *No project*); its agents' addresses change every run
 (find one by its tab's name in `herdr-app ls`).
 
 - Bring the window to the front first (`osascript -e 'tell application "Herdr" to activate'`) or the
@@ -93,7 +94,7 @@ task, so they're neither made into no-plan tasks nor drawn; its agents' addresse
   `taskr.new`, `taskr.settings`, `taskr.jump`, `layout.select`/`layout.hide`, `pane.focus {terminal}`.
 - `preview.png`, `site/img/overview.png`, `board.png` and `stats.png`: the whole frame at half size, with
   Now in the sidebar (Projects lists your own plain terminals under *No project*: they'd be in the shot).
-  Lists: x 0–660 from y 80; cut Projects above *No project*. Detail: x 3746–4480 from y 84. Dialogs: their box (settings exactly, the form and the
+  Lists: x 0–608 from y 80 (the sidebar's width; measure it on the frame); cut Projects above *No project*. Detail: x 3746–4480 from y 84. Dialogs: their box (settings exactly, two columns, 1796×1716, the form and the
   find box with a 20px margin); the form is a demo task's (*Edit task*), since *New task* lists the
   folders open on your Mac. Shots taken one after another can repeat a stale frame: activate the
   window before each one and compare them. Update `width`/`height` in `site/*.html` when a size changes.
@@ -189,3 +190,15 @@ The repository is laid out as herdr.dev expects a layout: `layouts/taskr.json`, 
 `RECIPE.md` and `preview.png` at the root, and the GitHub topic `herdr-layout`. herdr.dev picks it up
 within the hour. Before a release: tests, `scripts/check.sh`, a new `preview.png` from the demo if the
 look changed, and a line in `CHANGELOG.md`.
+
+## Ideas for later
+
+- **A session's questions under it in Projects.** Below each agent's row, folded, the questions you
+  asked it (first line and time, newest first, the last 10 and "see all"); a click shows that question
+  and the agent's answer for that turn in the detail, with *Go to the agent*. Scrolling the terminal
+  to the question isn't possible: Claude Code draws on the alternate screen, so the terminal keeps no
+  history to scroll (`hc read` returns only the screen; `terminal.scroll` has nothing to move), and a
+  resumed or compacted session doesn't show older questions at all. The questions come from the
+  session's transcript (`~/.claude/projects/<folder>/<session>.jsonl`, which `lib/agentinfo.js`
+  already reads): read only what was added since the last look, and keep the list, since a
+  transcript can weigh tens of MB.
