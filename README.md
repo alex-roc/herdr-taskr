@@ -150,8 +150,8 @@ to another, opening its tab the first time.
 or *Details* in a task's menu; selecting a task never opens it, and it stays as you left it): its stage,
 *Ready for review* or *Mark done*, *Later…* and *Waiting on…*, the next step and notes; each agent with its
 model, reasoning effort, context, turn and sub-agents, and the question it's waiting on; the last
-lines of its screen; the changes in its folder, its pull request and CI checks (with *Ask for a pull
-request* and *Send failed checks*); a box to **message the agent**; time in state and agent time
+lines of its screen; the changes in its folder and, for a task with its own branch, its pull request and CI checks (with
+*Ask for a pull request* and *Send failed checks*); a box to **message the agent**; time in state and agent time
 (and every change of stage, with *Activity in the details* on in the settings).
 
 **Start agent** on a task opens your agent in the folder's space with the task (title, next

@@ -41,17 +41,20 @@ export const Stats = {
       .child(div().text_size(22).font_semibold().text_color(t.foreground).child(value))
       .when(Boolean(sub), (el) => el.child(div().text_size(11).text_color(t.muted).child(sub)));
     const hours = (ms) => (ms ? duration(ms) : "0m");
-    // A bar per day: one measure per chart, its height from that chart's largest day.
+    // A bar per day: one measure per chart, its height from that chart's largest day. Each day has
+    // its slot; its date shows under it over a week or less, else under the first and last.
     const bars = (id, label, values, color, show) => {
       const max = Math.max(...values.map((v) => v.value), 0);
+      const dated = (i) => values.length <= 7 || i === 0 || i === values.length - 1;
       return v_flex().id(id).gap(6).p(12).rounded(9).bg(t.chrome).border_1().border_color(t.border).min_w(0)
         .child(div().text_size(11.5).text_color(t.muted).child(label))
-        .child(h_flex().h(BAR_H).gap(2).items_end().min_w(0)
-          .children(values.map((v, i) => div().id(`${id}-${i}`).flex_1().min_w(2).max_w(28)
-            .h(max ? Math.max(v.value ? 3 : 1, Math.round((v.value / max) * BAR_H)) : 1)
-            .rounded_t(3).bg(v.value ? color : t.border).tooltip(`${S.statsDay(v.day)}: ${show(v.value)}`))))
-        .child(h_flex().justify_between().text_size(10.5).text_color(t.dim)
-          .child(div().child(S.statsDay(values[0]?.day))).child(div().child(S.statsDay(values.at(-1)?.day))));
+        .child(h_flex().gap(2).items_end().min_w(0)
+          .children(values.map((v, i) => v_flex().id(`${id}-${i}`).flex_1().min_w(2).gap(4).items_center()
+            .tooltip(`${S.statsDay(v.day)}: ${show(v.value)}`)
+            .child(h_flex().h(BAR_H).w_full().items_end().justify_center()
+              .child(div().w_full().max_w(28).h(max ? Math.max(v.value ? 3 : 1, Math.round((v.value / max) * BAR_H)) : 1)
+                .rounded_t(3).bg(v.value ? color : t.border)))
+            .child(div().h(14).text_size(10.5).text_color(t.dim).whitespace_nowrap().child(dated(i) ? S.statsDay(v.day) : "")))));
     };
     const name = (id) => (id ? this.store.project(id)?.name ?? S.noProject : S.noProject);
     const cell = (text, w, right = true, color = t.foreground) => div().w(w).flex_none().when(right, (el) => el.text_right()).text_color(color).child(text);
@@ -74,7 +77,7 @@ export const Stats = {
         .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.statsProject)
           .map((p) => pill(`spj-${p.id}`, p.name, this.statsProject === p.id, () => { this.statsProject = p.id; }, "layers"))))
       .child(v_flex().id("st-body").flex_1().min_h(0).px(14).pb(16).gap(12).overflow_y_scrollbar()
-        .child(h_flex().gap(10).flex_wrap()
+        .child(h_flex().gap(10).flex_wrap().items_stretch()
           .child(tile("st-done", S.statsDone, String(sum.totals.done), S.statsDoneSub))
           .child(tile("st-worked", S.statsWorked, String(sum.totals.worked), sum.totals.noPlan ? S.statsNoPlan(sum.totals.noPlan) : null))
           .child(tile("st-turns", S.statsTurns, String(sum.totals.turns)))

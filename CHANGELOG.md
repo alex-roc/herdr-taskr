@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.1 — 2026-11-14
+
+### Fixed
+- **Stats**: over 7 days the bars sat bunched on the left while the first and last dates went to the
+  edges. Each day now has its own slot across the width, with its date under it over a week (the
+  first and last over 30 or 90 days), and the four numbers at the top are the same height.
+
+- **Pull requests only for a task with its own branch.** The detail no longer offers *Ask for a pull
+  request*, nor asks `gh`, for a task worked on in its folder's own branch (main, say): only one
+  started in a worktree has a PR and checks to show, as with Review when its PR opens.
+
+### Docs
+- New screenshots for 1.7 (Now, Projects, the board, the details, the form, find, settings, stacked
+  lists) and one of Stats, now on the site and in the tutorial. The demo keeps some weeks of agent work
+  and tasks done earlier, so Stats has something to show.
+
 ## 1.7.0 — 2026-11-14
 
 **One language for tasks: three questions, three owners.** A task's **stage** (Inbox, Next, In progress,

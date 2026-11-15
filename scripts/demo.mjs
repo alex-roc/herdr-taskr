@@ -26,7 +26,8 @@ const DAY = 86400000;
 
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts }).trim();
 const herdr = (command, args) => JSON.parse(sh("herdr-app", ["do", command, JSON.stringify(args)]));
-const day = (n) => { const d = new Date(Date.now() + n * DAY); return d.toISOString().slice(0, 10); };
+// A local date n days from today (Stats and due dates go by the local day).
+const day = (n) => { const d = new Date(Date.now() + n * DAY); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 function clean() {
   if (existsSync(STATE)) {
@@ -67,7 +68,7 @@ function setup() {
   const w1 = herdr("space.new", { folder: abs(web), tab: "Add OAuth login", argv: agent("Add OAuth login", "working") });
   const w2 = herdr("tab.new", { space: w1.space, name: "Pick a database", folder: abs(web), argv: agent("Pick a database", "blocked", "Sessions: Postgres or SQLite?") });
   const a1 = herdr("space.new", { folder: abs(api), tab: "Rate limiter", argv: agent("Rate-limit the public API", "done") });
-  // An agent started on its own: a task with no plan, finished, in To review.
+  // An agent started on its own: a task with no plan, its turn finished.
   const b1 = herdr("space.new", { folder: abs(book), tab: "docs search", argv: agent("Try a search box for the docs", "done") });
   // A plain terminal in the notes folder: no task.
   const n1 = herdr("tab.new", { space: b1.space, name: "notes", folder: abs(notes) });
@@ -89,18 +90,29 @@ function setup() {
   const task = (f) => ({ id: `demo${++n}`, project: null, folder: null, status: "next", rank: n, due: null, estimate: null, next_step: "", notes: "",
     issue: null, worktree: null, branch: null, tabs: [], created: now - (3 + n) * DAY, updated: now - DAY, done_at: null, agent_ms: 0,
     history: [{ s: "inbox", at: now - (3 + n) * DAY }, { s: f.status ?? "next", at: f.updated ?? now - DAY }], ...f });
+  // Agent work over the last weeks, for Stats: [ms, turns] on some days, the same every run.
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const work = (days, perDay, from = 0) => Object.fromEntries(Array.from({ length: days }, (_, i) => from + i)
+    .filter((i) => i === from || rand() < 0.6).map((i) => [day(-i), [Math.round((0.3 + rand()) * perDay * 60000), 1 + Math.floor(rand() * 4)]]));
+  // Older tasks, done and put away: the board doesn't show them, Stats counts them.
+  const past = () => ["Add the health check", "Cache the session lookup", "Fix the date picker in Safari", "Retry failed webhooks",
+    "Write the API reference", "Drop the old auth middleware", "Speed up the test suite", "Translate the handbook intro",
+    "Log slow queries", "Tidy the README", "Add a status page", "Paginate the audit log"]
+    .map((title, i) => task({ title, project: i % 3 ? "acme" : "book", folder: i % 3 ? (i % 2 ? web : api) : book, status: "done", archived: true,
+      done_at: now - (1 + i * 2.3) * DAY, work: work(4, 25, Math.round(1 + i * 2.3)) }));
   const data = {
     version: 1,
     // No reminders: a demo isn't the time for notifications.
-    settings: { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false },
+    settings: { wip: 6, stale_days: 3, agent: "claude", usage: false, reminders: false, revive: false },
     projects: [
       { id: "acme", name: "Acme", folders: [web, api] },
       { id: "book", name: "Handbook", folders: [book, notes] },
     ],
     tasks: [
-      task({ title: "Add OAuth login", project: "acme", folder: web, status: "doing", due: day(2), next_step: "Wire the callback route", tabs: [w1.tab], agent_ms: 47 * 60000, estimate: "1d" }),
-      task({ title: "Pick a database for sessions", project: "acme", folder: web, status: "doing", tabs: [w2.tab], agent_ms: 12 * 60000 }),
-      task({ title: "Rate-limit the public API", project: "acme", folder: api, status: "review", tabs: [a1.tab], agent_ms: 33 * 60000,
+      task({ title: "Add OAuth login", project: "acme", folder: web, status: "doing", due: day(2), next_step: "Wire the callback route", tabs: [w1.tab], agent_ms: 47 * 60000, estimate: "1d", work: work(6, 30) }),
+      task({ title: "Pick a database for sessions", project: "acme", folder: web, status: "doing", tabs: [w2.tab], agent_ms: 12 * 60000, work: work(3, 15) }),
+      task({ title: "Rate-limit the public API", project: "acme", folder: api, status: "review", tabs: [a1.tab], agent_ms: 33 * 60000, work: work(5, 20),
         issue: { number: 31, url: "https://github.com/example/acme-api/issues/31", body: "" } }),
       // Its agent ran yesterday and is gone: the detail offers Resume agent.
       task({ title: "Fix the flaky checkout test", project: "acme", folder: web, due: day(0), next_step: "Reproduce with --repeat 50",
@@ -119,6 +131,7 @@ function setup() {
       task({ title: "Import the old wiki", project: "book", folder: book, status: "inbox" }),
       task({ title: "Ship the v1.4 changelog", project: "book", folder: book, status: "done", done_at: now - 2 * 3600000 }),
       task({ title: "Rotate the API keys", project: "acme", folder: api, status: "done", done_at: now - 2 * DAY }),
+      ...past(),
       ...(adopt ? [task({ title: "Polish the README", project: "book", folder: book, status: "doing", next_step: "Add a quick start", tabs: [adopt], agent_ms: 38 * 60000 })] : []),
       ...(yours.length ? [task({ title: "Your own tabs (hidden in the demo)", status: "done", archived: true, tabs: yours })] : []),
     ],
@@ -126,7 +139,7 @@ function setup() {
   writeFileSync(FILE, JSON.stringify(data, null, 1) + "\n");
   herdr("space.select", { id: w1.space });
   void n1;
-  console.log("Demo ready: three repos and a folder in ~/taskr-demo, 14 tasks, 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
+  console.log("Demo ready: three repos and a folder in ~/taskr-demo, 14 tasks (and 12 done earlier, for Stats), 4 stand-in agents. Clean up with: node scripts/demo.mjs --clean");
 }
 
 process.argv.includes("--clean") ? clean() : setup();

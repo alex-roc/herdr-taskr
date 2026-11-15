@@ -59,8 +59,10 @@ export const Detail = {
         if (!inView) this.det.screen = screen?.code === 0 ? (screen.stdout ?? "").split("\n").filter((l) => l.trim() && !l.startsWith("[hc]")).slice(-8) : null;
         this.det.where = where;
         this.det.diff = diff;
-        if (where && ["review", "doing", "done"].includes(x.t.status) && Date.now() - (this.det.prAt ?? 0) > PR_EVERY) {
-          this.det.pr = await pullRequest(where);
+        // Pull requests are for a task with its own branch (a worktree): working on main, there's none.
+        if (!x.t.branch) this.det.pr = null;
+        else if (where && ["review", "doing", "done"].includes(x.t.status) && Date.now() - (this.det.prAt ?? 0) > PR_EVERY) {
+          this.det.pr = await pullRequest(where, x.t.branch);
           this.det.prAt = Date.now();
         }
       } catch {}
@@ -171,7 +173,7 @@ export const Detail = {
         .when(pr.total > 0, (el) => el.child(chip(t, pr.failed.length ? S.checksFailedChip(pr.failed.length) : pr.pending ? S.checksRunning(pr.pending) : S.checksPassed, pr.failed.length ? t.blocked : pr.pending ? t.ansi3 : t.ansi2)))
         .when(Boolean(pr.review), (el) => el.child(chip(t, pr.review.toLowerCase().replace(/_/g, " "), t.dim))) : null,
       e ? h_flex().gap(6).flex_wrap()
-        .when(!pr, (el) => el.child(button(t, "d-pr", S.askPR, (_e, cx) => cx.spawn(async () => send(e.a.address, S.prRequest)), { small: true, iconName: "git-pull-request" })))
+        .when(!pr && Boolean(task.branch), (el) => el.child(button(t, "d-pr", S.askPR, (_e, cx) => cx.spawn(async () => send(e.a.address, S.prRequest)), { small: true, iconName: "git-pull-request" })))
         .when(Boolean(pr?.failed?.length), (el) => el.child(button(t, "d-checks", S.sendFailedChecks, (_e, cx) => cx.spawn(async () => send(e.a.address, S.checksFailed(pr.failed))), { small: true, danger: true, iconName: "circle-alert" }))) : null,
     ) : null;
 

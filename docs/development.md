@@ -67,7 +67,7 @@ while shown.
 ## A demo in the real window
 
 ```sh
-node scripts/demo.mjs          # 3 made-up folders in ~/taskr-demo, 14 tasks, 4 stand-in agents
+node scripts/demo.mjs          # 3 made-up folders in ~/taskr-demo, 14 tasks (12 more done earlier, for Stats), 4 stand-in agents
 node scripts/demo.mjs --adopt <tab id>   # also one of your real agent tabs, as a demo task
 node scripts/demo.mjs --clean  # closes the demo spaces, deletes ~/taskr-demo, restores your tasks
 ```
@@ -91,11 +91,14 @@ task, so they're neither made into no-plan tasks nor drawn; its agents' addresse
   say so first and take every shot in one go; to check behaviour, read files instead (`tasks.json`). Close a stray popup with `herdr-app do overlay.close`.
 - Drive it with commands: `taskr.view`, `taskr.select:<id>` (opens the detail), `taskr.board`,
   `taskr.new`, `taskr.settings`, `taskr.jump`, `layout.select`/`layout.hide`, `pane.focus {terminal}`.
-- `preview.png`, `site/img/overview.png` and `board.png`: the whole frame at half size. Lists: x 0–660
-  from y 80. Detail: x 3746–4480 from y 84. Dialogs: their box (settings exactly, the form and the
+- `preview.png`, `site/img/overview.png`, `board.png` and `stats.png`: the whole frame at half size, with
+  Now in the sidebar (Projects lists your own plain terminals under *No project*: they'd be in the shot).
+  Lists: x 0–660 from y 80; cut Projects above *No project*. Detail: x 3746–4480 from y 84. Dialogs: their box (settings exactly, the form and the
   find box with a 20px margin); the form is a demo task's (*Edit task*), since *New task* lists the
   folders open on your Mac. Shots taken one after another can repeat a stale frame: activate the
   window before each one and compare them. Update `width`/`height` in `site/*.html` when a size changes.
+- Find a dialog's box by its background (`#282b2e` in the dark theme) rather than by eye; the find
+  box is 1040px wide at x 1720.
 - Note what you changed (sidebar size, stack child, detail shown, `taskr.view`) and put it back
   after `--clean`.
 

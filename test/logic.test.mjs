@@ -494,12 +494,12 @@ test("detail: nothing is looked up while the panel is hidden", async () => {
   v.render(cx());
   await settle();
   assert.equal(H.hcLog.length, 0);
-  assert.ok(!H.execLog.some(([c]) => c === "gh"));
+  assert.ok(!H.execLog.some(([c]) => c === "gh" || c === "git"));
   delete find(H.layout).hidden;
   v.render(cx());
   await settle();
   assert.ok(H.hcLog.some((a) => a[0] === "read"));
-  assert.ok(H.execLog.some(([c]) => c === "gh"));
+  assert.ok(H.execLog.some(([c, args]) => c === "git" && args.includes("diff")), "its changes are looked up once shown");
 });
 
 test("Now and Projects stacked: each list its own view, the books kept once, key commands acted on once", async () => {
@@ -1019,6 +1019,28 @@ test("detail: a status picked there is saved and drawn at once; Activity only wh
   assert.ok(c.notified > before, "the copy that wrote redraws");
   await v.store.update((d) => { d.settings.activity = true; });
   assert.ok(text(v.render(cx())).includes(S.activity.toUpperCase()), "on in the settings");
+});
+
+test("detail: pull requests only for a task with its own branch; working on main, no gh and no button", async () => {
+  world();
+  H.props = { role: "detail" };
+  H.shared["taskr.selected"] = "blocked1"; // in progress, an agent, changes in ~/dev/app, no branch
+  const v = new Taskr();
+  v.init(H.props, cx());
+  await until(() => v.store.loaded);
+  v.render(cx());
+  await settle(30);
+  const ids = () => walk(v.render(cx())).map((n) => n.id);
+  assert.ok(text(v.render(cx())).includes("+10"), "its changes show");
+  assert.ok(!ids().includes("d-pr") && !ids().includes("d-pr-link"));
+  assert.ok(!H.execLog.some(([cmd]) => cmd === "gh"), "gh isn't asked");
+  H.shared["taskr.selected"] = "review1"; // its own worktree branch, with a PR
+  v.render(cx());
+  await settle(30);
+  v.render(cx());
+  await settle(30);
+  assert.ok(ids().includes("d-pr-link"), "its PR shows");
+  assert.ok(H.execLog.some(([cmd, args]) => cmd === "gh" && args.includes("task/feature")));
 });
 
 test("plan usage: Claude's get_usage reply and Codex's logged limits", () => {

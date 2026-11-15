@@ -93,8 +93,9 @@ every task by stage.
   sections in 10.5px uppercase `dim`:
   Next step, Notes, Agents (cards: program icon, title, address, state, "opus 5.5 · medium · ctx
   248k · turn 7 · working 1m", the pending question, sub-tasks and sub-agents as a tree), Screen
-  (last 8 non-empty lines of the agent's terminal), Changes (branch, "N files +add −del", PR chip
-  that opens the PR, checks chip, "Ask for a pull request", "Send failed checks"), Message the agent
+  (last 8 non-empty lines of the agent's terminal), Changes ("N files +add −del"; for a task with
+  its own branch: the branch, PR chip that opens the PR, checks chip, "Ask for a pull request", "Send
+  failed checks"), Message the agent
   (textarea + Send), Time ("In progress for 2h", "agents worked 47m", "created 4d ago"), and with
   *Activity in the details* on (off by default) Activity (history, newest first).
 - **Board** (a tab whose only pane is the mod with `role: "board"`, named "Board"; a project's own

@@ -44,6 +44,7 @@
         <li><a href="#review">Review and finish</a></li>
         <li><a href="#resume">Pick up after a restart</a></li>
         <li><a href="#board">Plan on the board</a></li>
+        <li><a href="#stats">See what got done</a></li>
         <li><a href="#keys">Keys and settings</a></li>
       </ol>
     </nav>
@@ -69,7 +70,7 @@ cd herdr-taskr
       <section class="step" id="project">
         <h2>Make a project</h2>
         <div class="side-by-side">
-          <figure><img src="img/projects.png" width="660" height="1609" alt="The Projects view: the Acme project with two folders, their branches, changes and tasks." loading="lazy"></figure>
+          <figure><img src="img/projects.png" width="660" height="1700" alt="The Projects view: the Acme project with two folders, their branches, changes and tasks." loading="lazy"></figure>
           <div>
             <p>Press <kbd>tab</kbd> in the list (or click <strong>Projects</strong>) to see the outline. Every folder open in Herdr shows up, under <em>No project</em> at first.</p>
             <p>Click the folder button in the header to make a project: give it a name and add its folders with <strong>Add folder…</strong>: a repository, or a plain folder with no repositories inside, goes in at once; a folder that holds several (<code>~/dev</code>) lists them to tick, with a filter, or you can <em>Add &lt;folder&gt; itself</em>. A folder in a project is only a pointer: no terminal, no task, until you start something there; right-click it to move it to another project or remove it from this one. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its folders (<code>~/dev</code>; your home folder while it has none, or when they share nothing below it), and show at the project's level, above its folders; the agent reaches every folder and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its folders (a folder's menu closes just its own). You can also drag a folder (like <code>~</code>) onto a project's name to move it there, with its tasks. Drag a project's row onto another to change their order.</p>
@@ -82,7 +83,7 @@ cd herdr-taskr
       <section class="step" id="tasks">
         <h2>Add tasks</h2>
         <p>Press <kbd>n</kbd>, click <strong>+</strong> in the header, or <strong>+</strong> on a folder to start with that folder filled in.</p>
-        <figure class="mid"><img src="img/form.png" width="1160" height="1360" alt="The New task form: title, project, folder, status, due date, estimate, next step and notes." loading="lazy"><figcaption>Only the title is required. Enter saves.</figcaption></figure>
+        <figure class="mid"><img src="img/form.png" width="1160" height="1360" alt="The task form for an Acme task: title, folder (the whole project or one of its folders), stage, due date, estimate, next step and notes." loading="lazy"><figcaption>Only the title is required. Enter saves.</figcaption></figure>
         <p>Keep the title short. The <strong>next step</strong> is the one action to take now; what the work needs (context, details, how it should be done, links) goes in <strong>Notes</strong>. When you start an agent on the task, it gets the title, the next step and the notes as its first message.</p>
         <p>Write the due date the way you'd say it:</p>
         <table class="keys">
@@ -130,14 +131,14 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
       <section class="step" id="review">
         <h2>Review and finish</h2>
         <div class="side-by-side">
-          <figure><img src="img/detail-review.png" width="734" height="1361" alt="A finished task in Review: its agent's last screen, changes, and the Mark done button." loading="lazy"></figure>
+          <figure><img src="img/detail-review.png" width="734" height="1361" alt="A task in Review: its agent's last screen, a message box, and the Mark done button." loading="lazy"></figure>
           <div>
             <p>When the agent stops, its turn is over, not the task: it shows under <strong>Finished</strong>, in bold until you look, then with its agent <em>Idle</em>, waiting for your next word (its stage stays <strong>In progress</strong>). Give it the next instruction, or, when the whole task is ready, press <strong>Ready for review</strong>: it moves to <strong>To review</strong>. Nothing is marked done by itself: that's your call. (Working with pull requests? A PR opened for a task in its own worktree moves it to Review too.)</p>
             <p>Not now? Move it to <strong>Next</strong> (you'll do it) or <strong>Dropped</strong> (you won't), or park it: <strong>Later</strong> (right-click or <kbd>z</kbd>) for tomorrow, next week, a day you type, <em>someday</em> or <em>until its agent works</em>; <strong>Waiting on…</strong> when it depends on someone, with who and a day to follow up. It waits in a folded <em>Later</em> section, out of your in-progress count, and comes back on its day with a notification.</p>
             <p>In the detail, under <strong>Changes</strong>:</p>
             <ul>
               <li><strong>Show changes</strong> opens Herdr's diff panel for the task's folder.</li>
-              <li>With <code>gh</code>, the pull request and its CI checks appear. <strong>Ask for a pull request</strong> sends the agent a request to commit, push and open one; <strong>Send failed checks</strong> sends it the names of the checks that failed.</li>
+              <li>For a task with its own branch (started in a worktree) and <code>gh</code>, the pull request and its CI checks appear. <strong>Ask for a pull request</strong> sends the agent a request to commit, push and open one; <strong>Send failed checks</strong> sends it the names of the checks that failed.</li>
             </ul>
             <p>Happy with it? Press <kbd>space</kbd> or <strong>Mark done</strong>. To put its tabs away too, right-click → <strong>Archive</strong>, which can also remove its worktree. A branch with unmerged commits is always kept.</p>
           </div>
@@ -167,6 +168,17 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
         </ul>
       </section>
 
+      <section class="step" id="stats">
+        <h2>See what got done</h2>
+        <p>The chart button at the top of Now opens Stats as a tab; a project's menu opens it for that project.</p>
+        <figure><img src="img/stats.png" width="2240" height="1230" alt="Stats over the last 7 days: four numbers, a bar chart of agent time per day, one of tasks done per day, and a table by project." loading="lazy"><figcaption>Hover a bar for its day and its number.</figcaption></figure>
+        <ul>
+          <li>Pick the period (today, or the last 7, 30 or 90 days) and every project or one.</li>
+          <li><em>Done</em> counts the tasks you closed; <em>Worked on</em>, the tasks whose agents worked, those with no plan too; <em>Turns</em>, how many times an agent finished its turn; <em>Agent time</em>, how long they worked.</li>
+          <li>Done tasks count back through their history. Agent time and turns are kept per day from 1.7 on, so a longer period says from which day it counts.</li>
+        </ul>
+      </section>
+
       <section class="step" id="keys">
         <h2>Keys and settings</h2>
         <p>Clicking a task in the list shows it in the detail and brings its agent's tab (or its terminal) to the front.</p>
@@ -187,7 +199,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
         <p>Anywhere in the layout: <kbd>cmd</kbd> <kbd>k</kbd> finds a task, <kbd>cmd</kbd> <kbd>shift</kbd> <kbd>n</kbd> makes one, <kbd>cmd</kbd> <kbd>i</kbd> shows or hides the detail.</p>
         <figure class="mid"><img src="img/jump.png" width="1080" height="880" alt="Find a task: a search box over the list of tasks, open ones first." loading="lazy"><figcaption>Find a task searches titles, folders, next steps, projects and issue numbers. Arrows move, enter opens.</figcaption></figure>
         <div class="side-by-side">
-          <figure><img src="img/settings.png" width="960" height="2360" alt="taskr settings: Park idle agents, Pause quiet projects, Now and Projects as tabs or stacked, In-progress limit, Days without movement, Agents after a restart, Reminders, Activity in the details, Plan usage, and which agent to start." loading="lazy"></figure>
+          <figure><img src="img/settings.png" width="960" height="2360" alt="taskr settings: Park idle agents, Now and Projects as tabs or stacked, Pause quiet projects, In-progress limit, Days without movement, Agents after a restart, Reminders, Activity in the details, Plan usage, and which agent to start." loading="lazy"></figure>
           <div>
             <p>The gear at the right of the status bar opens the settings:</p>
             <ul>

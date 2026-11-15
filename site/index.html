@@ -74,12 +74,12 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
 
       <div class="views">
         <div class="view side">
-          <img src="img/now-list.png" width="660" height="1536" alt="The Now list: what the agents ask of you (Needs you, Finished, Working), then the stages (To review, In progress, Next, Inbox), and a folded Later section; agents started from a terminal are tasks in it too." loading="lazy">
+          <img src="img/now-list.png" width="608" height="1580" alt="The Now list: what the agents ask of you (Needs you, Finished, Working), then the stages (In progress, Next, Inbox), and a folded Later section; agents started from a terminal are tasks in it too." loading="lazy">
           <div><h3>Now</h3>
           <p>What moves work forward, in order: what your agents ask of you, then the work by stage. An agent's question sits in the row itself, so you can answer without hunting for the tab. Not now, or waiting on someone? Park it with <em>Later</em> or <em>Waiting on…</em>: it waits out of the way and comes back on its day, with a reminder.</p></div>
         </div>
         <div class="view side">
-          <img src="img/projects.png" width="660" height="1609" alt="The Projects outline: Acme with a task and a terminal for the whole project above its folders acme-web and acme-api, each with branch, changes and tasks." loading="lazy">
+          <img src="img/projects.png" width="660" height="1700" alt="The Projects outline: Acme with a task and an agent for the whole project above its folders acme-web and acme-api, each with branch, changes and tasks." loading="lazy">
           <div><h3>Projects</h3>
           <p>Projects, their folders (a git folder shows its branch, commits not pushed and uncommitted changes) and their tasks. Terminals show up under their folder; a shell isn't a task. Each project gets its own board, and its own terminal, tasks and agents, which work across all its folders. Want both lists at once? Stack Projects over Now in the settings.</p></div>
         </div>
@@ -90,8 +90,14 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
           <p>One column per stage, and a board per project in a tab of its own. Agents started from a terminal are cards too, with no plan. Drag a card to another column or into place among the others, and watch the In progress column count against the limit you set.</p>
         </div>
 
+        <div class="view wide">
+          <img src="img/stats.png" width="2240" height="1230" alt="Stats over the last 7 days: Done 5, Worked on 6, Turns 46, Agent time 5h 14m; a bar chart of agent time per day, one of tasks done per day, and a table by project." loading="lazy">
+          <h3>Stats</h3>
+          <p>What got done today or over the last 7, 30 or 90 days, for every project or one: tasks you closed, tasks your agents worked on, their turns and their time, a chart per day and a table by project. Agents you started without a plan count like any task.</p>
+        </div>
+
         <div class="view wide split">
-          <img src="img/detail-blocked.png" width="734" height="1557" alt="The detail of a task whose agent needs an answer: the question, the agent's screen, its changes and a message box." loading="lazy">
+          <img src="img/detail-blocked.png" width="734" height="1557" alt="The detail of a task whose agent needs an answer: the question, its changes and a message box." loading="lazy">
           <div>
             <h3>Task detail</h3>
             <p>Everything about one task, next to its agent.</p>
@@ -127,7 +133,7 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
       <p class="intro">The parts that save a trip to another window.</p>
       <div class="views">
         <div class="view wide split">
-          <img src="img/detail-resume.png" width="734" height="876" alt="A task whose agent is gone, with Resume agent above Start agent." loading="lazy">
+          <img src="img/detail-resume.png" width="734" height="876" alt="A task whose agent is gone: Resume agent first, then Start agent and Start with…." loading="lazy">
           <div>
             <h3>Resume after a restart</h3>
             <p>taskr remembers the Claude Code or Codex conversation each task's agent was in. After a reboot, or once you closed its tab, <em>Resume agent</em> picks it up where it was, in its folder, tied to the task again.</p>
@@ -137,7 +143,7 @@ cd herdr-taskr &amp;&amp; ./install.sh --keys</span><button class="copy" data-co
           </div>
         </div>
         <div class="view wide split">
-          <img src="img/light-tasks.png" width="660" height="600" alt="Now: an agent started from a terminal, Try a search box for the docs, is a task with no plan, next to planned tasks." loading="lazy">
+          <img src="img/light-tasks.png" width="608" height="600" alt="Now: an agent started from a terminal, Try a search box for the docs, is a task with no plan, next to planned tasks." loading="lazy">
           <div>
             <h3>Tasks or terminals, the same flow</h3>
             <p>Started an agent in a terminal on a hunch? Every agent is a task: one with no plan, named after what the agent calls its work, in progress while its agent is open, on the list and the board. It goes to Done when its agent quits or its tab closes (the tab is a plain terminal again), and Resume agent picks it up. Many agents open? Park the idle ones until they work again, by hand or by themselves after a while. Press <em>Plan it…</em> to give it a next step, notes or a due date, or change anything and it's yours. Plan with tasks when you want the details; work with terminals when you don't.</p>
