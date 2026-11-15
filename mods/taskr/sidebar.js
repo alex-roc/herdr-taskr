@@ -10,7 +10,7 @@ import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir } from "./lib/world.js";
 import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
 import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
-import { onWorking, quitStage, parkDue, prReady, stale } from "./lib/flow.js";
+import { onWorking, quitStage, parkDue, prReady, stale, agentFolder } from "./lib/flow.js";
 import { byDay, addWork } from "./lib/stats.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
@@ -294,13 +294,14 @@ export const Sidebar = {
       if (!x.t.auto || !x.open || x.t.freed) { delete gone[x.t.id]; continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });
-      // Its folder too, from its agent: one started in a project's tab (no folder) after a `cd` into
-      // a folder of its own goes under that folder. At the project's place, it's project-wide work.
-      const here = !x.t.folder && x.project && !x.folderOn ? x.agents.map((e) => workDir(e.term)).find(Boolean) : null;
-      const proj = here ? this.store.data.projects.find((p) => p.id === x.project) : null;
-      if (proj && here !== projectPlace(proj, home())?.folder) {
-        const folder = tilde(x.repoHere ?? here, home());
-        ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !y.folder) y.folder = folder; });
+      // Its folder too, from its agent, every time it moves: a `cd` and another agent started there
+      // take the task along (lib/flow.js agentFolder). Not on another machine, nor in a worktree.
+      if (!x.folderOn && !x.t.worktree) {
+        const proj = x.t.project ? this.store.data.projects.find((p) => p.id === x.t.project) : null;
+        const folder = agentFolder(x.agents.map((e) => workDir(e.term)).find(Boolean), x.repoHere, projectPlace(proj, home())?.folder, home());
+        if (folder !== undefined && folder !== (x.t.folder ?? null)) {
+          ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !y.worktree) y.folder = folder; });
+        }
       }
       // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
       // or a machine is away).

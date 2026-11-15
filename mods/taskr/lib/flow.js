@@ -7,7 +7,7 @@
 // The turn never writes the stage, but for one thing: an agent starting work means the work is
 // under way (In progress, `doing` in the file). A finished turn isn't a finished task.
 
-import { OPEN, isDropped, isLater } from "./util.js";
+import { OPEN, isDropped, isLater, tilde } from "./util.js";
 
 // An agent started working: the task it's for is under way. Review stays Review (fixing what a
 // review found is part of it); Dropped stays dropped.
@@ -24,6 +24,16 @@ export const adoptStage = (had) => (had?.status === "review" ? "review" : "doing
 // A task with no plan whose agent quit (or whose tab closed): nothing else says when it's done,
 // so it is; one in Review waits for you.
 export const quitStage = (t) => (t?.status === "review" ? "review" : "done");
+
+// Where a task with no plan works: its agent's folder, wherever it goes (a `cd`, then another agent
+// started there), as the repository it's in (`repo`) or the folder itself (`here`). In the task's
+// project, its place is project-wide work: no folder. Moved by hand, a task isn't one with no plan
+// any longer (`kept`) and stays where you put it.
+export function agentFolder(here, repo, place, h) {
+  if (!here) return undefined;
+  if (place && here === place) return null;
+  return tilde(repo ?? here, h);
+}
 
 // A task whose agent you've seen and that waits for a word from you, for longer than `minutes`
 // (0: never): parked until its agent works again. Planned or not: every agent is a task. One you

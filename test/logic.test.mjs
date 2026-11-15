@@ -797,7 +797,7 @@ test("an agent's task: in progress whatever its agent does, one per tab", async 
   // One task per tab.
   assert.equal(await adopt(store, u), null);
 });
-test("a task with no plan in a project's own tab takes its agent's folder, unless that's the project's place", async () => {
+test("a task with no plan follows its agent's folder (a `cd`, another agent), unless at the project's place or moved by hand", async () => {
   const v = await sidebar();
   const { projectPlace } = await import("../mods/taskr/lib/actions.js");
   const { taskWhere } = await import("../mods/taskr/lib/world.js");
@@ -830,6 +830,22 @@ test("a task with no plan in a project's own tab takes its agent's folder, unles
   await v.store.load();
   assert.ok(v.store.project(p.id).folders.includes("~/dev/new-thing"));
   H.shared["taskr.view"] = "now";
+  // It already has a folder (its agent began at ~) and another agent starts after a `cd`: it follows.
+  t4.foreground = { ...t4.foreground, cwd: `${H.home}/dev/other-thing` };
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(id).folder, "~/dev/other-thing");
+  // Back at the project's place: project-wide again.
+  t4.foreground = { ...t4.foreground, cwd: place };
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(id).folder, null);
+  // Moved by hand, it's yours (no longer `auto`): it stays where you put it.
+  await v.store.update((d) => { const t = d.tasks.find((y) => y.id === id); delete t.auto; t.folder = "~/dev/mine"; });
+  t4.foreground = { ...t4.foreground, cwd: `${H.home}/dev/elsewhere` };
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(id).folder, "~/dev/mine");
 });
 
 test("a task with no plan is Done when its agent quits, its tab still open; after a restart it waits for the agent", async () => {

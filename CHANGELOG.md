@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.8 — 2026-11-15
+
+### Fixed
+- **A task with no plan follows its agent to every folder, not just the first.** One whose agent
+  began in a folder (your home, say) kept it: quit the agent, `cd` into another folder and start a new
+  one in the same tab, and the task still read *~*. Its folder is now its agent's whenever that
+  changes (at the project's own place, project-wide again). A task you moved by hand is yours and
+  stays put.
+
 ## 1.7.7 — 2026-11-15
 
 ### Changed

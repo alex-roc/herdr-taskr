@@ -126,7 +126,8 @@ something does; one you pause stays paused. Work for the whole project
 named after it, in the nearest folder holding all its folders (`~/dev` for `~/dev/a` and
 `~/dev/b`; your home folder while it has none, or when they share nothing below it), and shows at the project's level, above its
 folders. An agent started there after a `cd` into another folder (a new one, say) goes under that
-folder in the project instead. That folder shows there while it has tasks; its row's
+folder in the project instead, and a task with no plan keeps following its agent: quit it, `cd`
+elsewhere and start another, and the task moves along (moved by hand, it stays where you put it). That folder shows there while it has tasks; its row's
 *Add to project* button (a folder with a plus) keeps it in the project for good.
 
 A Claude Code that reports no state to Herdr (it asks the terminal once, as it starts, and with no
