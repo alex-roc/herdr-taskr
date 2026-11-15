@@ -1091,6 +1091,25 @@ test("status bar: plan usage shown, colored by the fuller limit, and off when as
   assert.doesNotMatch(text(v.render(cx())), /Claude/);
 });
 
+test("status bar: working counts as Now's Working does; an archived task's agent isn't counted", async () => {
+  world();
+  H.props = { role: "status" };
+  const v = new Taskr();
+  v.init(H.props, cx());
+  await until(() => v.store.loaded);
+  v.render(cx());
+  await settle();
+  const count = () => Number(walk(v.render(cx())).find((n) => n.id === "st-working").children.map(text).join(" ").match(/(\d+) working/)[1]);
+  const now = () => nowView(v.world, v.store.data).working.length;
+  assert.ok(now() > 0);
+  assert.equal(count(), now());
+  const id = nowView(v.world, v.store.data).working[0].t.id;
+  await v.store.update((d) => { const x = d.tasks.find((y) => y.id === id); x.status = "done"; x.archived = true; });
+  v.render(cx());
+  await settle();
+  assert.equal(count(), now(), "still the same as Now");
+});
+
 async function mountRole(props, setup) {
   world();
   setup?.();

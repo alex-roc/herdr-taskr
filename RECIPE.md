@@ -127,7 +127,7 @@ every task by stage.
   working agent finishes or rests. When the period reaches before the first day kept, a dim line says
   since when.
 - **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0; not no-plan or dropped tasks), "In
-  progress n/limit" (parked tasks don't count; `ansi3` and "finish something first" when over), "! N need(s) you" (click: Now), "N working"; on the right plan usage
+  progress n/limit" (parked tasks don't count; `ansi3` and "finish something first" when over), "! N need(s) you" (click: Now), "N working" (both count open tasks, as Now's sections do); on the right plan usage
   "Claude 28% wk 34%" and "Codex 8% wk 12%" (`muted`, `ansi3` from 70%, `blocked` from 90%, by the
   fuller limit; tooltip with reset times; click looks again; "Claude !" with the reason on error),
   "N open", a `panel-right` button that shows or hides the detail (`foreground` when shown) and a

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.2 — 2026-11-14
+
+### Fixed
+- **The status bar's *N working* counts as Now does**: open tasks whose agent works. It counted
+  every agent at work in any tab, a task's sub-agents and the agents of archived tasks too, so it
+  could say 3 with one row under Working.
+
 ## 1.7.1 — 2026-11-14
 
 ### Fixed

@@ -136,7 +136,8 @@ export default class Taskr extends View {
     const doneToday = w.tasks.filter((x) => !x.t.auto && !isDropped(x.t) && x.t.done_at && localDay(x.t.done_at) === today()).length;
     const doing = doingCount(w);
     const needs = open.filter((x) => x.top === "blocked").length + w.untracked.filter((u) => u.top === "blocked").length;
-    const working = [...w.byTab.values()].flat().filter((e) => e.status === "working").length;
+    // As Now's Working: open tasks whose agent works (not the agents of closed or archived ones).
+    const working = open.filter((x) => x.top === "working").length + w.untracked.filter((u) => u.top === "working").length;
     const max = d.settings.wip;
     const over = doing > max;
     const item = (id, color, iconName, text, onClick) => h_flex().id(id).gap(5).items_center().text_color(color)
