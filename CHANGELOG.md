@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.3 — 2026-11-15
+
+### Fixed
+- **Agents back after a restart, once.** A Mac starting brings a dozen terminals back at once, and a
+  resume typed while a terminal was still being recovered could arrive twice: the agent came back
+  with the same `cd … && claude --resume …` line waiting in its input box. The line now waits until
+  the new shell has been in front a few seconds.
+- **A conversation is no longer forgotten on shutdown.** Shutting down quits the agents before their
+  shells, and a shell alone for ten seconds was taken as an agent quit by hand: that terminal came
+  back as a plain shell. Only a shell alone for two minutes counts as that now.
+- **A task with no plan isn't closed and reopened by a restart.** Its agent gone while the terminals
+  came back, it was marked Done and opened again seconds later, leaving a stray Done in its history.
+  A task whose agent taskr is bringing back now waits for it.
+- The list of conversations to resume is read and written again after the mod reloads in the middle
+  of either.
+
 ## 1.7.2 — 2026-11-14
 
 ### Fixed

@@ -744,8 +744,17 @@ test("a task with no plan is Done when its agent quits, its tab still open; afte
   const id = v.store.data.tasks.find((t) => t.auto).id;
   const t4 = H.terminals.find((t) => t.address === "t4");
   // A restart: another shell, the agent being resumed in it a moment later. Kept meanwhile.
+  // While taskr types its conversation back in (lib/revive.js), it isn't counted as quit at all:
+  // a dozen terminals coming back can take longer than the wait.
+  v.revive.c.loaded = true;
+  v.revive.c.recs.t4 = { pid: t4.pid, tab: "tb4", app: "claude", id: "s4", cwd: "/x", at: Date.now() };
   t4.pid = 4004;
   t4.foreground = { pid: 4004, argv: ["/bin/zsh", "-l"], name: "zsh" };
+  await tick(v);
+  await tick(v);
+  assert.ok(!globalThis.__taskr.books.info.gone[id], "on its way back: not counting");
+  delete v.revive.c.recs.t4;
+  await tick(v);
   await tick(v);
   assert.ok(globalThis.__taskr.books.info.gone[id], "counting");
   t4.foreground = { pid: 4010, argv: ["claude"], name: "2.1.0" };
@@ -952,18 +961,43 @@ test("agents back after a restart: a terminal back as a fresh shell gets its con
   assert.ok(!saved.t6, "an empty conversation can't resume");
   // Right after a crash the old pid lingers with nothing in front: not "quit by hand".
   r.step(c, [term(10, null, false)], info);
-  // Back as a fresh shell (another pid): the resume is typed, once, without hc's "from" wrapper.
+  // Back as a fresh shell (another pid): nothing typed while it settles (text typed during a
+  // recovery can arrive twice), nor while it isn't the shell in front yet.
   H.notes.length = 0;
+  r.step(c, [term(20, null, false)], info);
+  r.step(c, [term(20, 20, false)], info);
+  r.step(c, [term(20, 20, false)], info);
+  await settle();
+  assert.equal(sent.length, 0, "settling");
+  assert.ok(r.coming(["tbR"]) && !r.coming(["tbOther"]), "its agent is on its way: its task isn't closed");
+  assert.ok(!JSON.stringify(JSON.parse(H.files.get(REVIVE()))).includes("settling"), "never written");
+  // Settled: the resume is typed, once, without hc's "from" wrapper.
+  r.c.recs.t5.settling.at -= 4000;
   r.step(c, [term(20, 20, false)], info);
   r.step(c, [term(20, 20, false)], info);
   await settle();
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0], ["-u", "HC_TERMINAL_ID", "hc", "send", "t5", "cd '/home/me/dev/app' && claude --resume sess-1"]);
   assert.match(H.notes[0].title, /agent is back/);
-  // Quit by hand (the same shell in front for a while): forgotten, so a later crash types nothing.
+  assert.ok(r.coming(["tbR"]), "typed: still on its way");
+  r.c.typed.t5 -= 130000;
+  r.step(c, [term(20, 20, false)], info);
+  assert.ok(!r.coming(["tbR"]), "not back minutes after: not coming any more");
+  // Its shell alone for a little while (a Mac shutting down quits the agents first): kept.
   r.c.recs.t5.quit = Date.now() - 20000;
   r.step(c, [term(20, 20, false)], info);
+  assert.ok(r.c.recs.t5, "a few seconds alone isn't a quit");
+  // Quit by hand (the same shell in front for minutes): forgotten, so a later crash types nothing.
+  r.c.recs.t5.quit = Date.now() - 130000;
+  r.step(c, [term(20, 20, false)], info);
   assert.ok(!r.c.recs.t5);
+  // A shell whose agent came back some other way while it settled: nothing typed.
+  r.c.recs.t5 = { pid: 20, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: Date.now() };
+  r.step(c, [term(25, 25, false)], info);
+  r.step(c, [term(25, 26, true)], info);
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(r.c.recs.t5.pid, 25);
   // An address reused by a terminal in another tab gets nothing.
   r.c.recs.t5 = { pid: 30, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: Date.now() };
   r.step(c, [term(40, 40, false, "tbOther")], info);

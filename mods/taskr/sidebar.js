@@ -297,7 +297,8 @@ export const Sidebar = {
       // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
       // or a machine is away).
       if (!(x.live.length && x.agents.length)) {
-        if (!anySpace || x.tabs.some((tab) => tab.includes("/"))) { delete gone[x.t.id]; continue; }
+        // Nor while its agent is on its way back after a restart (lib/revive.js).
+        if (!anySpace || x.tabs.some((tab) => tab.includes("/")) || this.revive.coming(x.live)) { delete gone[x.t.id]; continue; }
         gone[x.t.id] ??= now;
         if (now - gone[x.t.id] > (x.live.length ? QUIT_MS : 60000)) { delete gone[x.t.id]; close(x.t.id); }
         continue;

@@ -107,6 +107,17 @@ task, so they're neither made into no-plan tasks nor drawn; its agents' addresse
 - A lost terminal (reboot, core crash, `kill -9` of its shell: try that on a test space) comes back
   at the same address, in the same tab, with the same `created_ms` and another `pid`, a shell in
   front. Herdr never runs its program again: `lib/revive.js` types the resume.
+- Typed while a terminal is still being recovered (a Mac starting, a dozen terminals at once), the
+  resume line can arrive twice: the shell runs one and Claude Code finds the other in its input
+  box. `lib/revive.js` waits until the new shell has been in front 3 s. Shutting down quits the
+  agents before their shells: only a shell alone for minutes means an agent quit by hand. While
+  revive brings an agent back (`revive.coming(tabs)`), `follow` doesn't count its task's agent as
+  quit, or a task with no plan would be closed as Done and reopened at every restart.
+- To try a restart on one agent: `herdr-app do terminal.open` with `claude --model haiku "…"` in a
+  scratch folder, wait for `terminals.json` to list it, then `kill -9` its pid (or its shell's).
+- The window draws nothing while it's hidden or the screen sleeps, and mods run only when it draws:
+  if `tasks.json` and `terminals.json` stop changing and `herdr-app shot` repeats an old frame,
+  that's why, not a bug.
 - `hc send` from inside a terminal (with `HC_TERMINAL_ID` set) wraps the text as a message from that
   agent, `<hc from="t11">…</hc>`: a shell can't run it. Clear the variable to type a command.
 - Herdr's `app` on a pane can linger after its agent quits (a zsh still says `claude-code`), and
