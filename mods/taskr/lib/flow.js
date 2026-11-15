@@ -25,10 +25,10 @@ export const adoptStage = (had) => (had?.status === "review" ? "review" : "doing
 // so it is; one in Review waits for you.
 export const quitStage = (t) => (t?.status === "review" ? "review" : "done");
 
-// A task with no plan whose agent you've seen and that waits for a word from you, for longer than
-// `minutes` (0: never): parked until its agent works again.
+// A task whose agent you've seen and that waits for a word from you, for longer than `minutes`
+// (0: never): parked until its agent works again. Planned or not: every agent is a task.
 export function parkDue(t, top, since, now, minutes) {
-  return minutes > 0 && t?.auto === true && OPEN.has(t.status) && !isLater(t) && top === "idle"
+  return minutes > 0 && OPEN.has(t?.status) && !isLater(t) && top === "idle"
     && Boolean(since) && now - since > minutes * 60000;
 }
 

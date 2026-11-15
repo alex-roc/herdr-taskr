@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.4 — 2026-11-15
+
+### Changed
+- **Park idle agents parks any task, planned or not.** Every agent is a task: one you gave details to
+  and one you didn't are parked alike after their agent waits for you that long, so two sessions
+  idle as long no longer end up one in Finished and the other in Later.
+
 ## 1.7.3 — 2026-11-15
 
 ### Fixed

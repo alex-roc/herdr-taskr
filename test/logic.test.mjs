@@ -842,7 +842,7 @@ test("dimmed: what's closed or parked, unless its agent works or asks", () => {
   assert.equal(aside({ status: "next", snooze: later }, "working"), false, "parked, but its agent works");
   assert.equal(aside({ status: "doing", snooze: "agent" }, "blocked"), false, "parked, but its agent asks");
 });
-test("park idle agents: off by default; when set, a task with no plan waiting on you is parked until its agent works", async () => {
+test("park idle agents: off by default; when set, any task waiting on you is parked until its agent works", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
   const t4 = H.terminals.find((t) => t.address === "t4");
@@ -853,12 +853,14 @@ test("park idle agents: off by default; when set, a task with no plan waiting on
   await tick(v);
   assert.equal(v.store.task(id).snooze, null, "off by default: it stays in progress");
   assert.ok(nowView(v.world, v.store.data).finished.some((x) => x.t.id === id), "waiting for a word from you");
-  // Four hours: parked until its agent works; the planned one (review1, t8 idle as long) isn't.
+  // Four hours: parked until its agent works, and so is the planned one (review1, t8 idle as long):
+  // every agent is a task.
   await v.store.update((d) => { d.settings.park_after = 240; });
   await tick(v);
   assert.equal(v.store.task(id).snooze, "agent");
   assert.equal(v.store.task(id).status, "doing", "its stage doesn't change");
-  assert.equal(v.store.task("review1").snooze, null);
+  assert.equal(v.store.task("review1").snooze, "agent");
+  assert.equal(v.store.task("review1").status, "review");
   v.render(cx());
   assert.ok(nowView(v.world, v.store.data).later.some((x) => x.t.id === id));
   // Its agent works again: back, in progress.
@@ -1327,7 +1329,7 @@ test("flow: the turn writes the stage only when an agent starts work; quitting c
   assert.equal(nowSection(x({ status: "doing" })), "doing", "in progress, no agent waiting");
   assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 60), true);
   assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 0), false, "never by default");
-  assert.equal(parkDue({ status: "doing" }, "idle", now - 2 * 3600000, now, 60), false, "a planned task is never parked by itself");
+  assert.equal(parkDue({ status: "doing" }, "idle", now - 2 * 3600000, now, 60), true, "a planned task alike");
   assert.equal(parkDue({ status: "doing", auto: true }, "done", now - 2 * 3600000, now, 60), false, "not before you've seen it");
 });
 

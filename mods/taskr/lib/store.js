@@ -14,7 +14,7 @@ export const DIR = () => `${appHome()}/data/taskr`;
 const OLD_DIR = () => `${appHome()}/data/tasker`;
 export const FILE = () => `${DIR()}/tasks.json`;
 
-// `park_after`: minutes a task with no plan stays in progress with its agent idle (seen, waiting
+// `park_after`: minutes a task (planned or not) stays with its agent idle (seen, waiting
 // for you) before it's parked until that agent works again; 0: never (the default).
 export const PARK_AFTER = [0, 60, 240, 1440];
 // `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.

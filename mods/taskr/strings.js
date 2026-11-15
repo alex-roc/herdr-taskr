@@ -178,7 +178,7 @@ export const S = {
   backTitle: (n) => (n === 1 ? "Back from Later" : `${n} tasks back from Later`),
   dueTitle: (late, n) => (late ? (n === 1 ? "A task is late" : `${n} tasks are late or due`) : n === 1 ? "Due today" : `${n} tasks due today`),
   parkAfter: "Park idle agents",
-  parkAfterHint: "A task with no plan is in progress while its agent is open, and counts for the limit. After this long with its agent idle (seen, waiting for you), it's parked until the agent works again. Tasks you planned are never parked by themselves.",
+  parkAfterHint: "A task whose agent stays idle this long (seen, waiting for you) is parked until the agent works again, planned or not. Parked, it leaves Now and doesn't count for the limit.",
   pauseAfter: "Pause quiet projects",
   pauseAfterHint: "A project where nothing happens (no task changes, no agent works) for this long is paused, and comes back by itself when something does. A project you pause stays paused.",
   pauseAfterLabel: (d) => (d === 0 ? "Never" : d === 1 ? "1 day" : `${d} days`),

@@ -272,8 +272,8 @@ export const Sidebar = {
   // its agent until the person changes anything on it. Nothing else says when such a task is done,
   // so its agent quitting (or its tab closing) does: Done, or still in Review if it was there, and
   // its tabs are terminals again (resumable from there). After a restart the agent comes back by
-  // itself (lib/revive.js) before that, and the task goes on. With `park_after` set, one whose agent
-  // stays idle that long is parked until its agent works again.
+  // itself (lib/revive.js) before that, and the task goes on. With `park_after` set, any task whose
+  // agent stays idle that long (planned or not) is parked until its agent works again.
   follow(cx, w, ops, now) {
     const adopting = (this.books.adopting ??= {});
     for (const u of w.untracked) {
@@ -304,8 +304,11 @@ export const Sidebar = {
         continue;
       }
       delete gone[x.t.id];
-      if (parkDue(x.t, x.top, this.sinceOf(lead(x)), now, parkAfter)) {
-        ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !isLater(y)) park(y, "agent"); });
+    }
+    // Any task whose agent waits for you that long, planned or not.
+    for (const x of w.tasks) {
+      if (x.open && parkDue(x.t, x.top, this.sinceOf(lead(x)), now, parkAfter)) {
+        ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y && OPEN.has(y.status) && !isLater(y)) park(y, "agent"); });
       }
     }
   },

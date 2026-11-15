@@ -97,7 +97,7 @@ else says when it's done, so when its agent quits (30 seconds after) or its tab 
 after), it goes to Done (one in Review stays there), and *Resume agent* picks it up; a
 tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again takes the
 same task back up. With many agents open, *Park idle agents* in the settings (1 hour, 4 hours, a day;
-off by default) parks a no-plan task whose agent has been idle that long, until the agent works again.
+off by default) parks any task whose agent has been idle that long, planned or not, until the agent works again.
 A planned task only goes Done by your hand. *Done today* in the status bar counts neither no-plan nor
 dropped tasks. So you can work only with terminals and agents and still get the list, the board,
 Later, the reminders and the resume after a restart; and plan tasks with details (next step, notes,
@@ -230,7 +230,7 @@ Your other layouts are untouched; switch back the same way.
 
 Settings (the gear in the status bar): Now and Projects as tabs or **stacked** (both at once, one
 above the other, as Herdr's spaces and agents), how many tasks can be in progress before the status bar
-warns you, after how many days a task in progress shows its time in yellow, which agent *Start agent* runs, whether no-plan tasks whose agent stays idle get parked (*Park idle agents*), after how many quiet days a project pauses by itself, whether
+warns you, after how many days a task in progress shows its time in yellow, which agent *Start agent* runs, whether tasks whose agent stays idle get parked (*Park idle agents*), after how many quiet days a project pauses by itself, whether
 the detail lists every change of stage (*Activity*, off by default) and whether the status bar shows
 plan usage. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
 it to its header (the other takes the room), and a double click on the name gives it all the room.
@@ -277,7 +277,7 @@ file it can't read (it shows what's wrong instead). It never goes in this reposi
 
 ```jsonc
 {
-  "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false, "park_after": 0, "pause_after": 1 },  // agent: a key from Herdr's agent menu; park_after: minutes a no-plan task's agent stays idle before it's parked (0: never); pause_after: quiet days before a project pauses (0: never)
+  "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false, "park_after": 0, "pause_after": 1 },  // agent: a key from Herdr's agent menu; park_after: minutes a task's agent stays idle before it's parked (0: never); pause_after: quiet days before a project pauses (0: never)
   "projects": [{ "id": "p1", "name": "Acme", "folders": ["~/dev/acme"], "paused": false }],
   "tasks": [{
     "id": "t1", "title": "Add OAuth login", "project": "p1", "folder": "~/dev/acme",
