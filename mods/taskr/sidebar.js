@@ -542,7 +542,9 @@ export const Sidebar = {
     const last = Math.max(task.updated ?? 0, task.history?.at(-1)?.at ?? 0, (e && since) || 0);
     const old = !msg && stale(task, x.top, last, Date.now(), (this.store.data.settings.stale_days ?? 3) * 86400000);
     const tail = old ? S.inProgressFor(duration(Date.now() - last)) : (e ? agentFor(e.top, since) : null) ?? later ?? (task.next_step ? `→ ${task.next_step}` : null);
-    const second = msg || [where, tail].filter(Boolean).join(" · ") || null;
+    // Its agent reports no state (it missed it as it started): said, so you can restart it.
+    const silent = e && this.titles.silent(e) ? S.silent : null;
+    const second = msg || [where, silent, tail].filter(Boolean).join(" · ") || null;
     const done = task.status === "done";
     const due = done ? null : dueChip(t, task.due);
     // Another row held over this one: a line shows where it lands (below when it comes from above).

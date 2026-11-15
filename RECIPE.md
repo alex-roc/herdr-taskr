@@ -249,8 +249,11 @@ every task by stage.
 - A pane whose program isn't a shell and is an agent by Herdr's table, its report or its key
   (claude, codex) counts as an agent even when it reports no state (`claude attach`). Its state comes
   from its title as the core has it (`hc get`: Herdr strips the mark for mods), every 3 s with the
-  window in front, a change redrawing every copy: ◐◓◑◒ or braille first is working, ✳ idle, else
-  `unknown` ("running 4m"). Its session comes from `~/.claude/projects/<folder>/<attach id>*.jsonl`.
+  window in front, a change redrawing every copy: ◐◓◑◒ or braille first is working, ✳ idle (`done`
+  when it stopped with its terminal not in front of you, until you look), else `unknown` ("running
+  4m"). A Claude Code that isn't `claude attach` and reports nothing (`unreported`: it missed the
+  terminal's answer about reports as it started) for over a minute adds "not reporting" to its row,
+  and its agent card in the detail a Restart button once stopped (`restart` in `lib/revive.js`). Its session comes from `~/.claude/projects/<folder>/<attach id>*.jsonl`.
 - Import issues: GitHub (`gh issue list`) or Linear (GraphQL `viewer.assignedIssues`, not completed or
   canceled, with a personal API key from `$LINEAR_API_KEY` or `data/taskr/linear-key`; imported
   most urgent first by Linear's priority, due date kept). Issues already imported (same URL) are hidden.

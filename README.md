@@ -127,7 +127,12 @@ named after it, in the nearest folder holding all its folders (`~/dev` for `~/de
 `~/dev/b`; your home folder while it has none, or when they share nothing below it), and shows at the project's level, above its
 folders. An agent started there after a `cd` into another folder (a new one, say) goes under that
 folder in the project instead. That folder shows there while it has tasks; its row's
-*Add to project* button (a folder with a plus) keeps it in the project for good. **Projects is an outliner**: drag a project's row onto another to reorder them; drag a folder
+*Add to project* button (a folder with a plus) keeps it in the project for good.
+
+A Claude Code that reports no state to Herdr (it asks the terminal once, as it starts, and with no
+answer in time, a dozen agents starting at once, stays silent) says *not reporting* on its row after a
+minute; its card in the detail has **Restart**, which quits it and resumes the same conversation in its
+terminal. Meanwhile taskr reads its state from its title. **Projects is an outliner**: drag a project's row onto another to reorder them; drag a folder
 onto another folder and it takes that place (a line shows where it lands, in its own project or in
 another), or onto a project's header to put it last there (*No project* takes it out); drag a task onto
 a folder, a project's header (its own level) or a task elsewhere, and it moves there (a task with a

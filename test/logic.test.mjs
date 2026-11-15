@@ -705,6 +705,40 @@ test("an agent's state from its title as the core has it (Herdr strips the mark 
   H.focused = null;
 });
 
+test("an agent that reports no state: told after a minute, and restarted in its own terminal", async () => {
+  world();
+  const { unreported } = await import("../mods/taskr/lib/world.js");
+  const { Titles } = await import("../mods/taskr/lib/titles.js");
+  const { restart } = await import("../mods/taskr/lib/revive.js");
+  const fg = (argv) => ({ quiet: true, a: { address: "t6" }, term: { foreground: { argv } } });
+  assert.ok(unreported(fg(["claude", "--resume", "s"])));
+  assert.ok(!unreported(fg(["claude", "attach"])), "claude attach never reports, by design");
+  assert.ok(!unreported({ ...fg(["claude"]), quiet: false }), "one that reports");
+  const ti = new Titles();
+  ti.c.quietAt = {};
+  ti.refresh(cx(), ["t6"]);
+  await settle();
+  const e = fg(["claude"]);
+  assert.ok(!ti.silent(e), "not right away: it may be starting");
+  ti.c.quietAt.t6 -= 61000;
+  assert.ok(ti.silent(e));
+  ti.refresh(cx(), []);
+  assert.ok(!ti.silent(e), "forgotten once it reports");
+  // Restart: /exit, its shell back in front, then its conversation resumed there.
+  const sent = [];
+  const realExec = H.exec;
+  let shell = false;
+  H.exec = (cmd, args) => {
+    if (cmd === "sleep") return { code: 0, stdout: "" };
+    if (cmd === "env" && args[3] === "send") { sent.push(args.slice(4)); if (args[5] === "/exit") shell = true; return { code: 0, stdout: "" }; }
+    if (cmd === "env" && args[3] === "get") return { code: 0, stdout: JSON.stringify({ pid: 9, foreground: shell ? { pid: 9, argv: ["/bin/zsh"] } : { pid: 10, argv: ["claude"] } }) };
+    return realExec(cmd, args);
+  };
+  assert.equal(await restart("t6", { app: "claude", id: "sess-6", cwd: "/home/me/dev/app" }), true);
+  assert.deepEqual(sent, [["t6", "/exit"], ["t6", "cd '/home/me/dev/app' && claude --resume sess-6"]]);
+  H.exec = realExec;
+});
+
 async function sidebar(opts) {
   world(opts);
   H.props = { role: "sidebar" };

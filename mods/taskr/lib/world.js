@@ -22,6 +22,12 @@ export const agentInFront = (t) => Boolean(t?.program?.agent) || /(^|\/)(claude|
 
 // The terminal's own shell is in front again: the agent it ran has quit (or never ran). A remote
 // terminal, or one that doesn't say, counts as still running its agent.
+// Claude Code in front that reports no state to Herdr: it asks the terminal once, as it starts, and
+// stays silent for the whole session if no answer came in time (a dozen agents starting at once).
+// `claude attach` never reports, by design: not this.
+export const unreported = (e) => Boolean(e?.quiet) && /(^|\/)claude$/.test(e?.term?.foreground?.argv?.[0] ?? "")
+  && e.term.foreground.argv[1] !== "attach";
+
 // The folder a terminal works in: its program's in front (an agent started after a `cd`), else the
 // terminal's own, which can stay where its shell began.
 export const workDir = (t) => t?.foreground?.cwd ?? t?.cwd ?? null;

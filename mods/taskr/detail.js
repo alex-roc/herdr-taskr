@@ -2,7 +2,7 @@
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
-import { theme, run, shared, hc, home, window, focused } from "herdr";
+import { theme, run, shared, hc, home, window, focused, notify } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, unpark } from "./lib/store.js";
 import { diffStat } from "./lib/git.js";
@@ -11,6 +11,7 @@ import { RANK, duration, shortModel, kilo, base, untilde, CHOICES, issueLabel, i
 import { STATUS_ICON, statusIcon, statusColor, dueChip, agentMark, button, chip, programIcon, icon, onScreen, agentFor } from "./lib/ui.js";
 import { openDialog } from "./lib/open.js";
 import { workDir } from "./lib/world.js";
+import { restart } from "./lib/revive.js";
 
 const LOOK_EVERY = 15000; // screen and diff, while shown and the window is in front
 const PR_EVERY = 60000; // gh goes to the network
@@ -86,6 +87,11 @@ export const Detail = {
       .children(children.filter(Boolean));
   },
 
+  restartAgent(cx, e, info) {
+    const rec = { app: "claude", id: info.session, cwd: info.cwd ?? workDir(e.term) };
+    cx.spawn(async () => { if (!(await restart(e.a.address, rec))) notify({ title: S.restartFailed, body: e.a.address, level: "error" }); });
+  },
+
   agentCard(t, e) {
     const info = this.info.get(e.a.address);
     const since = this.sinceOf(e);
@@ -93,6 +99,10 @@ export const Detail = {
       e.term?.turn ? S.turn(e.term.turn) : null, agentFor(e.status, since)].filter(Boolean);
     const records = Object.values(e.term?.records ?? {}).filter((r) => r?.title);
     const question = e.top === "blocked" ? (e.report?.msg ?? "").replace(/^answer:\s*/i, "") : "";
+    // It reports no state (it missed the terminal's answer as it started): restarting it fixes that,
+    // offered once it's stopped and its conversation is known.
+    const silent = this.titles.silent(e);
+    const canRestart = silent && ["idle", "done"].includes(e.top) && Boolean(info?.session);
     return v_flex().id(`ag-${e.a.address}`).p(8).gap(4).rounded(8).border_1().border_color(e.top === "blocked" ? t.blocked : t.border).bg(t.surface)
       .cursor_pointer().hover((s) => s.bg(t.hover)).on_click(() => run("pane.focus", { pane: e.a.pane }))
       .child(h_flex().gap(7).items_center()
@@ -102,6 +112,9 @@ export const Detail = {
         .child(agentMark(t, e.top, false) ?? div()))
       .when(meta.length > 0, (el) => el.child(div().text_size(11).text_color(t.muted).child(meta.join(" · "))))
       .when(Boolean(question), (el) => el.child(div().text_size(11.5).text_color(t.blocked).child(question)))
+      .when(silent, (el) => el.child(h_flex().gap(8).items_center().text_size(11).text_color(t.ansi3)
+        .child(div().id(`sil-${e.a.address}`).flex_1().min_w(0).tooltip(S.silentHint).child(S.silent))
+        .when(canRestart, (el) => el.child(button(t, `rs-${e.a.address}`, S.restartAgent, (_e, cx) => this.restartAgent(cx, e, info), { small: true, iconName: "rotate-ccw", tooltip: S.silentHint })))))
       .children(records.slice(0, 5).map((r, i) => h_flex().pl(6).gap(6).items_center().text_size(11).text_color(t.muted)
         .child(div().text_color(t.dim).child(i === Math.min(records.length, 5) - 1 ? "└" : "├"))
         .child(agentMark(t, r.state) ?? div())

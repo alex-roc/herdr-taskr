@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.6 — 2026-11-15
+
+### Added
+- **An agent that isn't reporting says so, and restarts in one click.** A Claude Code that missed the
+  terminal's answer about status reports as it started (see 1.7.5) stays silent for the whole session.
+  After a minute its row says *not reporting*, and its card in the detail offers **Restart** once it's
+  stopped: it quits (`/exit`) and comes back in the same conversation, in the same terminal.
+  `claude attach` never reports, by design, and isn't flagged.
+
 ## 1.7.5 — 2026-11-15
 
 ### Fixed

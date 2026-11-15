@@ -38,6 +38,21 @@ export async function resumeLine(r) {
   return `${r.cwd ? `cd ${quote(r.cwd)} && ` : ""}${argv.map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : quote(a))).join(" ")}`;
 }
 
+// Restarts an agent in its own terminal: quits it (/exit), waits for its shell, then resumes its
+// conversation there. For one that reports no state (see world.js `unreported`), stopped.
+export async function restart(addr, r) {
+  const hcx = (args) => exec("env", ["-u", "HC_TERMINAL_ID", "hc", ...args]);
+  const line = await resumeLine(r);
+  await hcx(["send", addr, "/exit"]);
+  for (let i = 0; i < 20; i++) {
+    await exec("sleep", ["0.5"]);
+    let t = null;
+    try { t = JSON.parse((await hcx(["get", addr, "--json"]))?.stdout || "null"); } catch {}
+    if (shellOnly(t)) return (await hcx(["send", addr, line]))?.code === 0;
+  }
+  return false;
+}
+
 export class Revive {
   constructor() {
     this.c = sharedCache("revive").info; // recs: address -> { pid, tab, app, id, cwd, at }; text: the file as read or written

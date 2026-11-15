@@ -12,7 +12,9 @@
 
 import { hc, setShared, focused, window } from "herdr";
 import { sharedCache, busy } from "./cache.js";
-import { titleState } from "./world.js";
+import { titleState, unreported } from "./world.js";
+
+const SILENT_MS = 60000; // silent this long: shown, with a way to restart it
 
 export class Titles {
   constructor() {
@@ -23,9 +25,24 @@ export class Titles {
     return this.c.info[address] ?? null;
   }
 
+  // A Claude Code that missed its reports as it started (world.js `unreported`), for a while now.
+  silent(e, now = Date.now()) {
+    return unreported(e) && this.silentFor(e.a.address, now) > SILENT_MS;
+  }
+
+  // How long it has reported nothing, as far as taskr has seen (0: not seen silent).
+  silentFor(address, now = Date.now()) {
+    const at = this.c.quietAt?.[address];
+    return at ? now - at : 0;
+  }
+
   refresh(cx, addresses, maxAge = 3000) {
     const now = Date.now();
     const c = this.c;
+    // Since when each has been silent: from the first look, forgotten once it reports (or goes).
+    c.quietAt ??= {};
+    for (const a of Object.keys(c.quietAt)) if (!addresses.includes(a)) delete c.quietAt[a];
+    for (const a of addresses) c.quietAt[a] ??= now;
     const due = addresses.filter((a) => !a.includes("/") && !busy(c, a, now) && now - (c.seen[a] ?? 0) > maxAge);
     if (!due.length) return;
     for (const a of due) c.busy[a] = now;

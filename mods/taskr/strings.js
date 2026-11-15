@@ -144,6 +144,10 @@ export const S = {
   stackFold: "Fold this list (double-click: give it the room)",
   stackUnfold: "Unfold this list (double-click: give it the room)",
   addFolder: "Add folder",
+  silent: "not reporting",
+  silentHint: "Claude Code reports no state to Herdr: as it started, the terminal didn't answer its question about reports in time (several agents starting at once). taskr reads its title meanwhile. Restarting it fixes it: it quits and comes back in the same conversation.",
+  restartAgent: "Restart",
+  restartFailed: "Couldn't restart the agent",
   keepFolder: (p) => `Add to ${p}: only its tasks show it here now`,
   projectMenu: "Project menu",
   // Later
