@@ -1,5 +1,5 @@
-// Statistics over a period: what got done and how much the agents worked, tasks with no plan
-// (agents started on their own) counted like any other.
+// Statistics over a period: what got done and how much the agents worked. Every task counts
+// alike, planned or not (an agent started on its own is a task too).
 //
 // Each task keeps its agents' work per day: `work: { "YYYY-MM-DD": [ms, turns] }`, the last
 // WORK_DAYS days. A turn is an agent going from working to finished or idle. Tasks done come
@@ -47,11 +47,11 @@ export function periodDays(n, now = Date.now()) {
 }
 
 // A period's numbers. `tasks`: the world's ({ t, project }); `project`: only that project's (null:
-// all). Done counts the tasks you closed (with a plan, not dropped); Worked on, the tasks whose
-// agents worked in the period, with a plan or not.
+// all). Done counts the tasks done (not dropped); Worked on, the tasks whose agents worked in the
+// period.
 export function summary(tasks, { days, project = null }) {
   const inPeriod = new Set(days);
-  const blank = () => ({ done: 0, worked: 0, noPlan: 0, turns: 0, ms: 0 });
+  const blank = () => ({ done: 0, worked: 0, turns: 0, ms: 0 });
   const totals = blank();
   const perDay = new Map(days.map((d) => [d, { day: d, done: 0, turns: 0, ms: 0 }]));
   const perProject = new Map();
@@ -61,7 +61,7 @@ export function summary(tasks, { days, project = null }) {
     for (const day of Object.keys(t.work ?? {})) if (!since || day < since) since = day;
     if (project !== null && x.project !== project) continue;
     const row = perProject.get(x.project ?? null) ?? blank();
-    const doneDay = t.status === "done" && !isDropped(t) && !t.auto && t.done_at ? localDay(t.done_at) : null;
+    const doneDay = t.status === "done" && !isDropped(t) && t.done_at ? localDay(t.done_at) : null;
     if (doneDay && inPeriod.has(doneDay)) {
       totals.done++; row.done++; perDay.get(doneDay).done++;
     }
@@ -74,7 +74,6 @@ export function summary(tasks, { days, project = null }) {
     }
     if (ms || turns) {
       totals.worked++; row.worked++;
-      if (t.auto) { totals.noPlan++; row.noPlan++; }
       totals.ms += ms; row.ms += ms; totals.turns += turns; row.turns += turns;
     }
     if (row.done || row.worked) perProject.set(x.project ?? null, row);

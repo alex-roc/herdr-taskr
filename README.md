@@ -98,8 +98,8 @@ after), it goes to Done (one in Review stays there), and *Resume agent* picks it
 tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again takes the
 same task back up. With many agents open, *Park idle agents* in the settings (1 hour, 4 hours, a day;
 off by default) parks any task whose agent has been idle that long, planned or not, until the agent works again.
-A planned task only goes Done by your hand. *Done today* in the status bar counts neither no-plan nor
-dropped tasks. So you can work only with terminals and agents and still get the list, the board,
+A planned task only goes Done by your hand. *Done today* in the status bar counts every task done,
+planned or not (not dropped ones). So you can work only with terminals and agents and still get the list, the board,
 Later, the reminders and the resume after a restart; and plan tasks with details (next step, notes,
 due date, issues, a worktree) when you want.
 
@@ -125,7 +125,9 @@ something does; one you pause stays paused. Work for the whole project
 (its terminal, its agents, a task with a project but no folder) opens in the project's own space,
 named after it, in the nearest folder holding all its folders (`~/dev` for `~/dev/a` and
 `~/dev/b`; your home folder while it has none, or when they share nothing below it), and shows at the project's level, above its
-folders. **Projects is an outliner**: drag a project's row onto another to reorder them; drag a folder
+folders. An agent started there after a `cd` into another folder (a new one, say) goes under that
+folder in the project instead. That folder shows there while it has tasks; its row's
+*Add to project* button (a folder with a plus) keeps it in the project for good. **Projects is an outliner**: drag a project's row onto another to reorder them; drag a folder
 onto another folder and it takes that place (a line shows where it lands, in its own project or in
 another), or onto a project's header to put it last there (*No project* takes it out); drag a task onto
 a folder, a project's header (its own level) or a task elsewhere, and it moves there (a task with a
@@ -171,9 +173,8 @@ After a restart, or once you closed its tab, *Resume agent* (or `r`) runs `claud
 `codex resume <id>` in its folder, tied to the task again.
 
 **Stats** (the chart button in Now, *Stats* in a project's menu, or `taskr.stats`): a tab with today
-or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks you closed; *Worked
-on*, the tasks whose agents worked, those with no plan too (agents you started on your own count like
-any task); *Turns*, how many times an agent finished its turn; *Agent time*, how long they worked. A
+or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks done; *Worked
+on*, the tasks whose agents worked (planned or not, every task counts alike); *Turns*, how many times an agent finished its turn; *Agent time*, how long they worked. A
 chart per day for agent time and one for done tasks, and a table by project. Done tasks count
 backwards from their history; agent time and turns are kept per day from 1.7 on (`work` on each task,
 the last 120 days).

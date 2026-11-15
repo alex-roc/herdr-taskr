@@ -132,8 +132,8 @@ export default class Taskr extends View {
     const w = this.world;
     const d = this.store.data;
     const open = w.tasks.filter((x) => x.open);
-    // Work you closed: a task with no plan is Done when its agent quits, and a dropped one wasn't done.
-    const doneToday = w.tasks.filter((x) => !x.t.auto && !isDropped(x.t) && x.t.done_at && localDay(x.t.done_at) === today()).length;
+    // Every task done today, planned or not (a dropped one wasn't done).
+    const doneToday = w.tasks.filter((x) => !isDropped(x.t) && x.t.done_at && localDay(x.t.done_at) === today()).length;
     const doing = doingCount(w);
     const needs = open.filter((x) => x.top === "blocked").length + w.untracked.filter((u) => u.top === "blocked").length;
     // As Now's Working: open tasks whose agent works (not the agents of closed or archived ones).

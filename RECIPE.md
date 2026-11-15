@@ -117,8 +117,8 @@ every task by stage.
   (`chart-column`), a project's menu (that project picked) or `taskr.stats`; one tab, a pick sent
   through `shared("taskr.statsPick")`): header 44px on `canvas` with "Stats", period pills Today / 7
   days / 30 days / 90 days (remembered per copy) and project pills (All + each active project);
-  four tiles on `chrome` (Done: tasks closed by the person, planned, not dropped; Worked on: tasks
-  whose agents worked, "N with no plan"; Turns; Agent time); with more than a day, two bar charts,
+  four tiles on `chrome` (Done: tasks done, planned or not, not dropped; Worked on: tasks
+  whose agents worked; Turns; Agent time); with more than a day, two bar charts,
   one measure each (agent time per day in `working`, done per day in `done`): bars 2px apart, max
   28px wide, rounded tops, the tallest 72px, an empty day a 1px `border` line, a tooltip per bar
   ("11/14: 2h 5m"), first and last day under them; with All, a table by project (Done, Worked on,
@@ -126,7 +126,7 @@ every task by stage.
   (last 120 days, `lib/stats.js`): the books split agent time at midnights and count a turn when a
   working agent finishes or rests. When the period reaches before the first day kept, a dim line says
   since when.
-- **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0; not no-plan or dropped tasks), "In
+- **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0; any task, planned or not, but dropped ones), "In
   progress n/limit" (parked tasks don't count; `ansi3` and "finish something first" when over), "! N need(s) you" (click: Now), "N working" (both count open tasks, as Now's sections do); on the right plan usage
   "Claude 28% wk 34%" and "Codex 8% wk 12%" (`muted`, `ansi3` from 70%, `blocked` from 90%, by the
   fuller limit; tooltip with reset times; click looks again; "Claude !" with the reason on error),
@@ -167,8 +167,8 @@ every task by stage.
   `freed: true`: it lets go of its tabs (`released` in `lib/world.js`: not in `taskOfTab`, no agents,
   `live` empty), so a tab left open shows as a terminal row, and `adopt` takes the same task back up
   when an agent starts there again. With `park_after` (minutes: 60, 240, 1440; 0, never, by default)
-  a task with no plan whose agent has been idle that long is parked until it works (`parkDue`).
-  "Done today" doesn't count no-plan or dropped tasks.
+  any task whose agent has been idle that long, planned or not, is parked until it works (`parkDue`).
+  "Done today" counts every task done but dropped ones.
 - Parked: on its day it comes back (snooze cleared) with a notification; back from waiting on
   someone with "Follow up with Ana" as its next step when it had none. `agent` comes back when its
   agent works or asks. In progress and done clear it.
@@ -230,7 +230,11 @@ every task by stage.
 - Terminal tasks (every agent is a task; `sidebar.js` `follow()`, `adopt/merge/remove` in
   `lib/actions.js`): the bookkeeping adopts every tab with an agent and no task as a task with
   `auto: true` (no plan; in progress; a tab opened for a project goes to that project with no
-  folder). While `auto`, its title follows the agent's own title, and it goes to done (not removed,
+  folder). While `auto`, its title follows the agent's own title, and one with no folder takes its
+  agent's (`workDir`: the program in front's cwd, since the terminal's own stays where its shell
+  began) unless that's the project's place (`projectPlace`): its folder row then
+  shows a `folder-plus` button, "Add to <project>", while the folder isn't one of the project's
+  (`moveRepo`; taskr never adds a folder by itself), and it goes to done (not removed,
   one in review stays) 30 s after its agent quits (no agent left in its tabs: Herdr's listed agents
   whose terminal has its own shell in front again, `shellOnly` in `lib/world.js`, don't count) or a
   minute after its tab is gone from every space (not counting away machines or no spaces at all).

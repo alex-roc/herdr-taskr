@@ -61,7 +61,7 @@ jq --arg id "agent-$now" --argjson now "$now" \
 ## Settings and old keys
 
 `settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `park_after` (minutes
-a task with no plan stays in progress with its agent idle before it's parked until that agent works: 60,
+a task, planned or not, stays with its agent idle before it's parked until that agent works: 60,
 240, 1440, or 0 for never) and
 `pause_after` (days with nothing happening before a project pauses by itself: 1, 3, 7, 14, 30, or 0 for
 never). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave

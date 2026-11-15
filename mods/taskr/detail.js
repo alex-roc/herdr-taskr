@@ -10,6 +10,7 @@ import { send, pullRequest, openUrl } from "./lib/actions.js";
 import { RANK, duration, shortModel, kilo, base, untilde, CHOICES, issueLabel, isLater, laterLabel, stageOf } from "./lib/util.js";
 import { STATUS_ICON, statusIcon, statusColor, dueChip, agentMark, button, chip, programIcon, icon, onScreen, agentFor } from "./lib/ui.js";
 import { openDialog } from "./lib/open.js";
+import { workDir } from "./lib/world.js";
 
 const LOOK_EVERY = 15000; // screen and diff, while shown and the window is in front
 const PR_EVERY = 60000; // gh goes to the network
@@ -44,7 +45,7 @@ export const Detail = {
     this.det.at = Date.now();
     this.det.busy = true;
     const h = home();
-    const where = x.t.worktree ? untilde(x.t.worktree, h) : e?.term?.cwd ?? (x.t.folder ? untilde(x.t.folder, h) : null);
+    const where = x.t.worktree ? untilde(x.t.worktree, h) : workDir(e?.term) ?? (x.t.folder ? untilde(x.t.folder, h) : null);
     const shown = (d) => JSON.stringify([d.screen, d.where, d.diff, d.pr]);
     const before = shown(this.det);
     const inView = Boolean(e?.a.pane) && focused()?.pane === e.a.pane;

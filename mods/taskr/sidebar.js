@@ -7,8 +7,8 @@ import { v_flex, h_flex } from "gpui-base";
 import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
-import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere } from "./lib/world.js";
-import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest } from "./lib/actions.js";
+import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir } from "./lib/world.js";
+import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
 import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
 import { onWorking, quitStage, parkDue, prReady, stale } from "./lib/flow.js";
 import { byDay, addWork } from "./lib/stats.js";
@@ -294,6 +294,14 @@ export const Sidebar = {
       if (!x.t.auto || !x.open || x.t.freed) { delete gone[x.t.id]; continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });
+      // Its folder too, from its agent: one started in a project's tab (no folder) after a `cd` into
+      // a folder of its own goes under that folder. At the project's place, it's project-wide work.
+      const here = !x.t.folder && x.project && !x.folderOn ? x.agents.map((e) => workDir(e.term)).find(Boolean) : null;
+      const proj = here ? this.store.data.projects.find((p) => p.id === x.project) : null;
+      if (proj && here !== projectPlace(proj, home())?.folder) {
+        const folder = tilde(x.repoHere ?? here, home());
+        ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !y.folder) y.folder = folder; });
+      }
       // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
       // or a machine is away).
       if (!(x.live.length && x.agents.length)) {
@@ -659,6 +667,9 @@ export const Sidebar = {
       // Open: a space is in it, or one of its tasks has a terminal alive (an agent started elsewhere).
       const live = Boolean(sp) || r.tasks.some((x) => x.live.length > 0);
       const top = [...r.tasks.map((x) => x.top), ...r.untracked.map((u) => u.top)].reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
+      // Here only for its tasks (an agent started in a new folder): yours to add to the project, so
+      // it stays when they're gone. taskr never adds one by itself (an agent may be just passing by).
+      const passing = Boolean(proj) && !(proj.folders ?? []).some((f) => tilde(untilde(f, home()), home()) === r.key);
       rows.push(h_flex().id(id).pl(18).pr(6).h(26).flex_none().gap(6).items_center().rounded(6).cursor_pointer()
         .hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => { if (!this.clickAfterDrag()) this.fold(id, cx); })
@@ -681,6 +692,7 @@ export const Sidebar = {
         .when(!live, (el) => el.child(div().id(`no-${id}`).text_size(10.5).text_color(t.dim).tooltip(S.notOpenHint).child(S.notOpen)))
         .child(div().flex_1())
         .when(!open && Boolean(top), (el) => el.child(agentMark(t, top)))
+        .when(passing, (el) => el.child(iconButton(t, `keep-${id}`, "folder-plus", S.keepFolder(proj.name), (_e, cx) => { cx.spawn(async () => this.store.update((d) => moveRepo(d, r.key, pid, home()))); })))
         .child(iconButton(t, `add-${id}`, "plus", S.newTask, () => this.openTaskForm({ repo: r.key, project: proj?.id ?? null })))
         .child(iconButton(t, `term-${id}`, "square-terminal", S.newTerminal, () => openHere(r.key)))
         .child(iconButton(t, `more-${id}`, "ellipsis", S.repoMenu, () => openDialog("repo", { repo: r.key, project: proj?.id ?? null }))));

@@ -10,6 +10,8 @@
 // - Text typed while a terminal is still being recovered (a Mac starting, a dozen terminals
 //   coming back at once) can arrive twice: the shell runs the first copy and the agent finds the
 //   second in its input box. So the line waits until the new shell has been in front a moment.
+// - A dozen agents started at once may each miss the terminal's answer to their question about
+//   status reports, and then report no state at all: they're typed back one at a time.
 // - Shutting down quits the agents before their shells, and a shell left alone for a few seconds
 //   looked like an agent quit by hand: its conversation was forgotten. Only minutes alone count.
 
@@ -25,6 +27,7 @@ const KEEP_DAYS = 14;
 const QUIT_MS = 120000; // a shell alone this long: its agent was quit by hand
 const SETTLE_MS = 3000; // a new shell in front this long before the line is typed
 const STUCK_MS = 60000;
+const STAGGER_MS = 2000; // between one agent typed back and the next
 const COMING_MS = 120000; // after the line is typed, its agent is still on its way this long
 const quote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
@@ -74,11 +77,14 @@ export class Revive {
       if (!shellOnly(t)) continue;
       if (r.settling?.pid !== t.pid) { r.settling = { pid: t.pid, at: now }; later = true; continue; }
       if (now - r.settling.at < SETTLE_MS) { later = true; continue; }
+      // One at a time, a moment apart: a dozen agents starting at once can miss the terminal's answer
+      // to their question about status reports, and then report nothing for the whole session.
+      if (enabled && (back.length || now < (c.nextAt ?? 0))) { later = true; continue; }
       r.pid = t.pid; // typed once for this shell: never twice
       delete r.quit;
       delete r.settling;
       dirty = true;
-      if (enabled) { back.push({ addr, r: { ...r } }); c.typed[addr] = now; }
+      if (enabled) { back.push({ addr, r: { ...r } }); c.typed[addr] = now; c.nextAt = now + STAGGER_MS; }
     }
     c.coming = coming;
     // A shell settling: look again once it has, though nothing else changes on screen.

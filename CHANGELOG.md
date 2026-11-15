@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.7.5 — 2026-11-15
+
+### Fixed
+- **An agent started in a project's tab after a `cd` goes under that folder.** Open a terminal for a
+  project, make a folder and start an agent in it: its task stayed at the project's level and read
+  *~/dev*, the folder the terminal began in. Where an agent works is now read from the agent itself,
+  and a task with no plan and no folder takes it (one at the project's own place stays project-wide).
+- **An agent that reports no state still turns Finished.** Claude Code asks the terminal, as it
+  starts, whether it takes status reports; with no answer in time it reports nothing for the whole
+  session, and taskr read its title, which only tells working from stopped: it never showed as
+  finished. A stop while you look elsewhere is now *finished* (green) until you look at it, as
+  Herdr's own reports are.
+- **After a restart, agents are typed back one at a time**, two seconds apart: a dozen starting at
+  once is when they miss that answer.
+
+### Added
+- **Add to project** on a folder row that shows only for its tasks (an agent started in a new
+  folder): it keeps the folder in the project once they're gone.
+
+### Changed
+- **Done counts every task, planned or not.** *Done today* in the status bar and Stats' *Done* left
+  out the tasks with no plan, so working only with agents always read 0 done. Now they count like any
+  other (dropped tasks still don't), and *Worked on* no longer sets them apart with "N with no plan".
+  What still sets a task with no plan apart is only what it lacks a plan for: it's named after its
+  agent and it's done when its agent quits.
+
 ## 1.7.4 — 2026-11-15
 
 ### Changed

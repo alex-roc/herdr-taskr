@@ -642,7 +642,7 @@ test("Stats: periods and projects to pick, tiles, a chart per measure, a table b
   await settle();
   let words = text(render(view).tree);
   assert.match(words, /Worked on/);
-  assert.match(words, /1 with no plan/);
+  assert.doesNotMatch(words, /no plan/, "a task with no plan counts like any other, without a note of its own");
   assert.match(words, /2h/);
   const node = (id) => walk(render(view).tree).find((n) => n.id === id);
   assert.ok(node("st-bars-time") && node("st-bars-done"), "two charts, one measure each");

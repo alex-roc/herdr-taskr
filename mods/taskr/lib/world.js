@@ -22,6 +22,10 @@ export const agentInFront = (t) => Boolean(t?.program?.agent) || /(^|\/)(claude|
 
 // The terminal's own shell is in front again: the agent it ran has quit (or never ran). A remote
 // terminal, or one that doesn't say, counts as still running its agent.
+// The folder a terminal works in: its program's in front (an agent started after a `cd`), else the
+// terminal's own, which can stay where its shell began.
+export const workDir = (t) => t?.foreground?.cwd ?? t?.cwd ?? null;
+
 export const shellOnly = (t) => Boolean(t?.foreground) && t.pid != null && t.foreground.pid === t.pid && !agentInFront(t);
 
 // A task with no plan whose agent quit: its tabs are no longer its own (terminals again).
@@ -132,7 +136,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
     // repository there: a task may name none (a project's own space) and still be in one.
     const tab = x.live.find((tb) => ps.some((p) => p.tab === tb && p.cwd));
     x.folderOn = tab ? spaceOfTab.get(tab)?.on ?? null : null;
-    x.folder = x.agents.map((e) => e.term?.cwd).find(Boolean) ?? (tab ? ps.find((p) => p.tab === tab && p.cwd).cwd : null);
+    x.folder = x.agents.map((e) => workDir(e.term)).find(Boolean) ?? (tab ? ps.find((p) => p.tab === tab && p.cwd).cwd : null);
     x.repoHere = x.folder ? repos.get(x.folder, x.folderOn)?.main ?? null : null;
   }
 
@@ -143,7 +147,7 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
     const entries = byTab.get(tab) ?? [];
     const tabPanes = ps.filter((p) => p.tab === tab && p.terminal);
     if (!entries.length && !tabPanes.length) continue;
-    const folder = tabPanes.find((p) => p.cwd)?.cwd ?? entries[0]?.term?.cwd ?? where.folder ?? null;
+    const folder = workDir(entries[0]?.term) ?? tabPanes.find((p) => p.cwd)?.cwd ?? where.folder ?? null;
     const repoHere = folder ? repos.get(folder, where.on)?.main ?? null : null;
     untracked.push({ tab, where, agents: entries, panes: tabPanes, folder, repoHere, project: projectOfTab(tab, where), top: entries.reduce((m, e) => ((RANK[e.top] ?? 0) > (RANK[m] ?? 0) ? e.top : m), null) });
   }
@@ -249,7 +253,7 @@ export function untrackedName(u) {
   const title = [e?.term?.title, e?.a.title, p0?.title].find((x) => !isAddress(x));
   if (title) return title;
   const prog = e?.a.program ?? p0?.program;
-  const folder = base(p0?.cwd ?? e?.term?.cwd ?? "");
+  const folder = base(workDir(e?.term) ?? p0?.cwd ?? "");
   const who = prog && prog.key !== "program" ? prog.name : S.terminal;
   return folder ? `${who} · ${folder}` : who;
 }

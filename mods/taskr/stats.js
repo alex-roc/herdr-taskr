@@ -1,6 +1,5 @@
 // Stats: a tab with what got done and how much the agents worked, over today or the last 7, 30
-// or 90 days, for every project or one. Tasks with no plan (agents started on their own) count like
-// any other: in Worked on, Turns and Agent time.
+// or 90 days, for every project or one. Every task counts alike, planned or not.
 
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -79,7 +78,7 @@ export const Stats = {
       .child(v_flex().id("st-body").flex_1().min_h(0).px(14).pb(16).gap(12).overflow_y_scrollbar()
         .child(h_flex().gap(10).flex_wrap().items_stretch()
           .child(tile("st-done", S.statsDone, String(sum.totals.done), S.statsDoneSub))
-          .child(tile("st-worked", S.statsWorked, String(sum.totals.worked), sum.totals.noPlan ? S.statsNoPlan(sum.totals.noPlan) : null))
+          .child(tile("st-worked", S.statsWorked, String(sum.totals.worked)))
           .child(tile("st-turns", S.statsTurns, String(sum.totals.turns)))
           .child(tile("st-time", S.statsAgentTime, hours(sum.totals.ms))))
         .when(n > 1, (el) => el

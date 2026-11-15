@@ -684,6 +684,25 @@ test("an agent's state from its title as the core has it (Herdr strips the mark 
   v.render(cx());
   await settle();
   assert.equal(H.hcLog.filter((a) => a[0] === "get").length, n);
+  // Stopped while you look elsewhere: finished, as Herdr's own `done`; idle once you look at it.
+  const title = (x) => { H.hc = (args) => (args[0] === "get" && args[1] === "t6" ? { code: 0, stdout: JSON.stringify({ title: x }) } : { code: 0, stdout: "" }); };
+  const look = async () => { v.titles.c.seen.t6 = 0; v.render(cx()); await settle(); v.render(cx()); };
+  const top = () => (v.world.untracked.find((x) => x.tab === "tb6") ?? v.world.taskOfTab.get("tb6")).top;
+  title("✳ Fix the parser");
+  await look();
+  assert.equal(top(), "done");
+  await look();
+  assert.equal(top(), "done", "still not seen");
+  H.focused = { terminal: "t6", pane: p6.pane };
+  await look();
+  assert.equal(top(), "idle", "seen");
+  // Working again and stopping in front of you: idle straight away.
+  title("◐ Fix the parser");
+  await look();
+  title("✳ Fix the parser");
+  await look();
+  assert.equal(top(), "idle");
+  H.focused = null;
 });
 
 async function sidebar(opts) {
@@ -739,6 +758,41 @@ test("an agent's task: in progress whatever its agent does, one per tab", async 
   // One task per tab.
   assert.equal(await adopt(store, u), null);
 });
+test("a task with no plan in a project's own tab takes its agent's folder, unless that's the project's place", async () => {
+  const v = await sidebar();
+  const { projectPlace } = await import("../mods/taskr/lib/actions.js");
+  const { taskWhere } = await import("../mods/taskr/lib/world.js");
+  const id = v.store.data.tasks.find((t) => t.auto).id;
+  const p = v.store.data.projects.find((q) => q.folders?.length);
+  await v.store.update((d) => { const t = d.tasks.find((y) => y.id === id); t.project = p.id; t.folder = null; });
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  // The agent at the project's place: project-wide work, no folder.
+  const place = projectPlace(v.store.project(p.id), H.home).folder;
+  t4.foreground = { ...t4.foreground, cwd: place };
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(id).folder, null);
+  // Started after a `cd` into a new folder (the shell's own folder stays where it began): that one.
+  t4.cwd = place;
+  t4.foreground = { ...t4.foreground, cwd: `${H.home}/dev/new-thing` };
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(id).folder, "~/dev/new-thing");
+  assert.ok(v.store.task(id).auto, "still a task with no plan");
+  assert.match(taskWhere(v.store.data, v.world.taskById.get(id), H.home), /new-thing/);
+  // Its folder shows in the project only for it, with a button to keep it there; taskr adds none.
+  assert.ok(!v.store.project(p.id).folders.includes("~/dev/new-thing"));
+  H.shared["taskr.view"] = "projects";
+  const keep = walk(v.render(cx())).find((n) => n.id === `keep-r:${p.id}:~/dev/new-thing`);
+  assert.ok(keep, "a button to add it to the project");
+  assert.ok(!walk(v.render(cx())).some((n) => n.id === `keep-r:${p.id}:${p.folders[0]}`), "not on the project's own folders");
+  keep.handlers.on_click({}, cx());
+  await settle();
+  await v.store.load();
+  assert.ok(v.store.project(p.id).folders.includes("~/dev/new-thing"));
+  H.shared["taskr.view"] = "now";
+});
+
 test("a task with no plan is Done when its agent quits, its tab still open; after a restart it waits for the agent", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
@@ -1000,11 +1054,30 @@ test("agents back after a restart: a terminal back as a fresh shell gets its con
   await settle();
   assert.equal(sent.length, 1);
   assert.equal(r.c.recs.t5.pid, 25);
+  // Several back at once: one at a time, a moment apart.
+  const t7 = (pid) => ({ ...term(pid, pid, false, "tbR7"), address: "t7" });
+  r.c.recs.t5 = { pid: 1, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: Date.now() };
+  r.c.recs.t7 = { pid: 2, tab: "tbR7", app: "claude", id: "sess-7", cwd: "/y", at: Date.now() };
+  r.c.nextAt = 0;
+  r.step(c, [term(60, 60, false), t7(70)], info);
+  r.c.recs.t5.settling.at -= 4000;
+  r.c.recs.t7.settling.at -= 4000;
+  r.step(c, [term(60, 60, false), t7(70)], info);
+  await settle();
+  assert.equal(sent.length, 2, "one now");
+  r.step(c, [term(60, 60, false), t7(70)], info);
+  await settle();
+  assert.equal(sent.length, 2, "the other waits");
+  r.c.nextAt = 0;
+  r.step(c, [term(60, 60, false), t7(70)], info);
+  await settle();
+  assert.equal(sent.length, 3, "then the other");
+  delete r.c.recs.t7;
   // An address reused by a terminal in another tab gets nothing.
   r.c.recs.t5 = { pid: 30, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: Date.now() };
   r.step(c, [term(40, 40, false, "tbOther")], info);
   await settle();
-  assert.equal(sent.length, 1);
+  assert.equal(sent.length, 3);
   assert.ok(!r.c.recs.t5);
   H.exec = realExec;
 });
@@ -1397,7 +1470,7 @@ test("an agent starts with its model and effort by its own flags; others get nei
   assert.equal(kindOf(["pi"]), null);
 });
 
-test("stats: agent work split at midnight, kept per day for 120 days; a period counts tasks done and agents' work, no-plan ones too", async () => {
+test("stats: agent work split at midnight, kept per day for 120 days; a period counts tasks done and agents' work, planned or not", async () => {
   const { byDay, addWork, summary, periodDays, mergeWork } = await import("../mods/taskr/lib/stats.js");
   const late = new Date(2026, 10, 13, 23, 30).getTime();
   assert.deepEqual(byDay(late, late + 3600000), [["2026-11-13", 1800000], ["2026-11-14", 1800000]]);
@@ -1415,12 +1488,12 @@ test("stats: agent work split at midnight, kept per day for 120 days; a period c
     x({ status: "done", done_at: Date.now() - 30 * 86400000 }),
   ];
   const s = summary(tasks, { days });
-  assert.deepEqual(s.totals, { done: 1, worked: 3, noPlan: 2, turns: 6, ms: 4260000 }, "done: closed by you, planned, not dropped; worked: any task whose agents worked");
+  assert.deepEqual(s.totals, { done: 2, worked: 3, turns: 6, ms: 4260000 }, "done: any task done, not dropped; worked: any task whose agents worked");
   assert.equal(s.days.at(-1).ms, 4200000);
-  assert.equal(s.days.at(-1).done, 1);
+  assert.equal(s.days.at(-1).done, 2);
   assert.deepEqual(s.projects.map((r) => r.id), ["pa", "pw", null], "by agent time");
   assert.equal(s.since, "2020-01-01");
-  assert.deepEqual(summary(tasks, { days, project: "pw" }).totals, { done: 0, worked: 1, noPlan: 1, turns: 3, ms: 600000 });
+  assert.deepEqual(summary(tasks, { days, project: "pw" }).totals, { done: 1, worked: 1, turns: 3, ms: 600000 });
   const into = { work: { [today]: [1, 1] } };
   mergeWork(into, { work: { [today]: [2, 3] } });
   assert.deepEqual(into.work[today], [3, 4]);

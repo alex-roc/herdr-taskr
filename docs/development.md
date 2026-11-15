@@ -113,6 +113,10 @@ task, so they're neither made into no-plan tasks nor drawn; its agents' addresse
   agents before their shells: only a shell alone for minutes means an agent quit by hand. While
   revive brings an agent back (`revive.coming(tabs)`), `follow` doesn't count its task's agent as
   quit, or a task with no plan would be closed as Done and reopened at every restart.
+- Claude Code asks the terminal for status reports (OSC 7501) once, as it starts; with no answer in
+  time (a dozen agents starting at once) it reports nothing until it's restarted: `hc get` shows
+  `status: null` with `claude` in front. taskr then reads its state from the title (`lib/titles.js`),
+  and revive types agents back one at a time.
 - To try a restart on one agent: `herdr-app do terminal.open` with `claude --model haiku "…"` in a
   scratch folder, wait for `terminals.json` to list it, then `kill -9` its pid (or its shell's).
 - The window draws nothing while it's hidden or the screen sleeps, and mods run only when it draws:

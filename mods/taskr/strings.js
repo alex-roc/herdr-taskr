@@ -144,6 +144,7 @@ export const S = {
   stackFold: "Fold this list (double-click: give it the room)",
   stackUnfold: "Unfold this list (double-click: give it the room)",
   addFolder: "Add folder",
+  keepFolder: (p) => `Add to ${p}: only its tasks show it here now`,
   projectMenu: "Project menu",
   // Later
   showDetails: "Details",
@@ -269,9 +270,8 @@ export const S = {
   openStats: "Stats",
   statsPeriod: { today: "Today", "7d": "7 days", "30d": "30 days", "90d": "90 days" },
   statsDone: "Done",
-  statsDoneSub: "tasks you closed",
+  statsDoneSub: "tasks done",
   statsWorked: "Worked on",
-  statsNoPlan: (n) => `${n} with no plan`,
   statsTurns: "Turns",
   statsAgentTime: "Agent time",
   statsTimePerDay: "Agent time per day",
