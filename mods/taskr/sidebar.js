@@ -10,7 +10,7 @@ import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir } from "./lib/world.js";
 import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
 import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
-import { onWorking, quitStage, parkDue, prReady, stale, agentFolder } from "./lib/flow.js";
+import { onWorking, quitStage, parkDue, prReady, agentFolder } from "./lib/flow.js";
 import { byDay, addWork } from "./lib/stats.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
 import { sharedCache } from "./lib/cache.js";
@@ -225,6 +225,7 @@ export const Sidebar = {
             const t = d.tasks.find((y) => y.id === x.t.id);
             if (!t) return;
             t.agent_ms = (t.agent_ms ?? 0) + ms;
+            if (turn) t.turn_at = now;
             parts.forEach(([day, part], i) => addWork(t, day, part, i === parts.length - 1 ? turn : 0));
           });
           delete workSince[addr];
@@ -262,7 +263,6 @@ export const Sidebar = {
     }
     this.follow(cx, w, ops, now);
     this.watchPRs(cx, w, now);
-    this.pauseQuiet(w, ops, now);
     this.remind(w, ops, now);
     this.revive.step(cx, [...w.termBy.values()], this.info, this.store.data.settings.revive !== false);
     if (ops.length) cx.spawn(async () => this.store.update((d) => { for (const op of ops) op(d); }));
@@ -284,14 +284,22 @@ export const Sidebar = {
     const gone = (this.books.gone ??= {});
     const anySpace = w.spaces.length > 0;
     const parkAfter = this.store.data.settings.park_after ?? 0;
+    // Its agent gone, the task is closed and lets go of its tabs: a terminal left alone is no task.
     const close = (id) => ops.push((d) => {
       const y = d.tasks.find((z) => z.id === id);
-      if (!y?.auto || !OPEN.has(y.status) || y.freed) return;
+      if (!y || !OPEN.has(y.status) || y.freed) return;
       setStatus(y, quitStage(y), now);
       y.freed = true;
     });
+    const hadAgent = (this.books.hadAgent ??= {});
     for (const x of w.tasks) {
-      if (!x.t.auto || !x.open || x.t.freed) { delete gone[x.t.id]; continue; }
+      if (!x.open || x.t.freed) { delete gone[x.t.id]; continue; }
+      if (x.agents.length) hadAgent[x.t.id] = true;
+      // A task you gave details to is closed the same way, once it's had an agent: one seen here, or
+      // a conversation kept with a tab still open (a shell where its agent was). One you only opened
+      // a terminal for, with no agent ever, isn't.
+      if (!x.t.auto && !hadAgent[x.t.id] && !(x.t.sessions?.length && x.live.length)) { delete gone[x.t.id]; continue; }
+      if (!x.t.auto) { this.quitWatch(x, gone, anySpace, now, close); continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });
       // Its folder too, from its agent, every time it moves: a `cd` and another agent started there
@@ -303,24 +311,25 @@ export const Sidebar = {
           ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto && !y.worktree) y.folder = folder; });
         }
       }
-      // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back,
-      // or a machine is away).
-      if (!(x.live.length && x.agents.length)) {
-        // Nor while its agent is on its way back after a restart (lib/revive.js).
-        if (!anySpace || x.tabs.some((tab) => tab.includes("/")) || this.revive.coming(x.live)) { delete gone[x.t.id]; continue; }
-        gone[x.t.id] ??= now;
-        if (now - gone[x.t.id] > (x.live.length ? QUIT_MS : 60000)) { delete gone[x.t.id]; close(x.t.id); }
-        continue;
-      }
-      delete gone[x.t.id];
+      this.quitWatch(x, gone, anySpace, now, close);
     }
     // Any task whose agent waits for you that long, planned or not.
     for (const x of w.tasks) {
       const e = lead(x);
-      if (x.open && e && parkDue(x.t, x.top, this.sinceOf(e), now, parkAfter, this.since[e.a.address]?.at ?? this.sinceOf(e))) {
+      if (x.open && e && parkDue(x.t, x.top, this.sinceOf(e), now, parkAfter, x.t.turn_at ?? this.sinceOf(e))) {
         ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y && OPEN.has(y.status) && !isLater(y)) park(y, "agent"); });
       }
     }
+  },
+
+  // Its tab closed, or its agent quit (and not because Herdr is still bringing spaces back, a
+  // machine is away, or its agent is on its way back after a restart, lib/revive.js): closed a
+  // moment later.
+  quitWatch(x, gone, anySpace, now, close) {
+    if (x.live.length && x.agents.length) { delete gone[x.t.id]; return; }
+    if (!anySpace || x.tabs.some((tab) => tab.includes("/")) || this.revive.coming(x.live)) { delete gone[x.t.id]; return; }
+    gone[x.t.id] ??= now;
+    if (now - gone[x.t.id] > (x.live.length ? QUIT_MS : 60000)) { delete gone[x.t.id]; close(x.t.id); }
   },
 
   // A pull request opened for a task with its own branch (a worktree taskr made) moves it to Review:
@@ -345,30 +354,6 @@ export const Sidebar = {
         this.books.prBusy = false;
       }
     });
-  },
-
-  // Projects with nothing going on for `pause_after` days pause by themselves, and come back by
-  // themselves at the next sign of life (a task changed, an agent at work or asking). One the
-  // person paused stays paused.
-  pauseQuiet(w, ops, now) {
-    const days = this.store.data.settings.pause_after ?? 3;
-    const last = new Map();
-    const touch = (id, at) => { if (id && at > (last.get(id) ?? 0)) last.set(id, at); };
-    for (const x of w.tasks) {
-      touch(x.project, Math.max(x.t.updated ?? 0, x.t.history?.at(-1)?.at ?? 0, x.t.done_at ?? 0));
-      if (["working", "blocked"].includes(x.top)) touch(x.project, now);
-    }
-    for (const u of w.untracked) if (["working", "blocked"].includes(u.top)) touch(u.project ?? w.projectOfRepo.get(u.where.key), now);
-    for (const p of this.store.data.projects) {
-      const at = Math.max(last.get(p.id) ?? 0, p.active_at ?? 0);
-      // A project with nothing in it yet counts from when taskr first sees it.
-      if (!p.active_at && !p.paused && !last.has(p.id)) { ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y && !y.active_at) y.active_at = now; }); continue; }
-      if (p.paused && p.paused_auto && at > p.paused_auto) {
-        ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y?.paused_auto) { y.paused = false; delete y.paused_auto; y.active_at = now; } });
-      } else if (!p.paused && days > 0 && now - at > days * 86400000) {
-        ops.push((d) => { const y = d.projects.find((z) => z.id === p.id); if (y && !y.paused) { y.paused = true; y.paused_auto = now; } });
-      }
-    }
   },
 
   // Parked tasks whose day came: back in Now, with a notification. And once a day,
@@ -540,10 +525,10 @@ export const Sidebar = {
     // Where it is (Projects' outline already says it), then how long its agent has been as it is.
     // Model, effort and context live in the terminal's header and the detail.
     const where = showWhere ? taskWhere(this.store.data, x, home()) : null;
-    // In progress for days with nothing moving (no change, no agent at work): its time, in yellow.
     const last = Math.max(task.updated ?? 0, task.history?.at(-1)?.at ?? 0, (e && since) || 0);
-    const old = !msg && stale(task, x.top, last, Date.now(), (this.store.data.settings.stale_days ?? 3) * 86400000);
-    const tail = old ? S.inProgressFor(duration(Date.now() - last)) : (e ? agentFor(e.top, since) : null) ?? later ?? (task.next_step ? `→ ${task.next_step}` : null);
+    // In progress with no agent open (it quit, or its tab closed): said, with how long it's been so.
+    const agentless = !e && task.status === "doing" && !later ? S.noAgentFor(duration(Date.now() - last)) : null;
+    const tail = (e ? agentFor(e.top, since) : null) ?? later ?? agentless ?? (task.next_step ? `→ ${task.next_step}` : null);
     // Its agent reports no state (it missed it as it started): said, so you can restart it.
     const silent = e && this.titles.silent(e) ? S.silent : null;
     const second = msg || [where, silent, tail].filter(Boolean).join(" · ") || null;
@@ -585,7 +570,7 @@ export const Sidebar = {
         .child(div().flex_1().min_w(0).truncate().text_color(aside(task, x.top) ? t.dim : t.foreground).when(e?.top === "done", (el) => el.font_semibold()).child(task.title))
         .when(this.hovered === task.id && !e && !done, (el) => el.child(iconButton(t, `go-${task.id}`, "play", S.startHint, (_e, cx) => this.launch(cx, task, false))))
         .when(Boolean(due), (el) => el.child(due)))
-      .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : old ? t.ansi3 : t.dim).child(second)));
+      .when(Boolean(second), (el) => el.child(div().pl(23).truncate().text_size(11).text_color(blocked ? t.blocked : t.dim).child(second)));
   },
 
   untrackedRow(t, u, depth = 0, showWhere = false) {
@@ -612,8 +597,9 @@ export const Sidebar = {
 
   // ── Now ─────────────────────────────────────────────────────────────────
   nowRows(t, w) {
-    // When each task's agent last stopped (done and idle as one: looking at it doesn't count).
-    const v = nowView(w, this.store.data, (x) => { const e = lead(x); return e ? this.since[e.a.address]?.at ?? this.sinceOf(e) : null; });
+    // When each task's agent last ended a turn (kept on the task: an agent reopened idle after a
+    // restart ended none, and doesn't undo the stage you chose).
+    const v = nowView(w, this.store.data, (x) => x.t.turn_at ?? 0);
     const rows = [];
     const order = [];
     // `shut`: folded until opened (Later: out of the way is the point).
@@ -629,14 +615,11 @@ export const Sidebar = {
       if (list.length > max) rows.push(div().id(`more-${id}`).pl(31).h(22).text_size(11).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.foreground))
         .on_click(() => setShared("taskr.view", "projects")).child(S.more(list.length - max)));
     };
-    // What the agents ask of you, then the stages, then what's parked (folded).
+    // What the agents ask of you, then what's yours to do next, then what's parked (folded).
     section("needs", S.needsYou, v.needs, t.blocked);
     section("finished", S.finished, v.finished, t.done);
     section("working", S.working, v.working, t.working);
-    section("review", S.toReview, v.review, t.done);
-    section("doing", S.doing, v.doing, t.working);
-    section("next", S.nextUp, v.next, t.foreground, { max: 7 });
-    section("inbox", S.inbox, v.inbox, t.dim, { max: 5 });
+    section("next", S.nextUp, v.next, t.foreground, { max: 10 });
     section("later", S.later, v.later, t.dim, { shut: true });
     this.order = order;
     if (!rows.length) rows.push(div().px(12).pt(12).text_size(12).text_color(t.dim).child(S.emptyNow));

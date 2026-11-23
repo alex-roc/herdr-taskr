@@ -47,8 +47,8 @@ export function periodDays(n, now = Date.now()) {
 }
 
 // A period's numbers. `tasks`: the world's ({ t, project }); `project`: only that project's (null:
-// all). Done counts the tasks done (not dropped); Worked on, the tasks whose agents worked in the
-// period.
+// all). Done counts the tasks you marked done (not dropped, nor closed because their agent quit:
+// a session ending isn't work finished); Worked on, the tasks whose agents worked in the period.
 export function summary(tasks, { days, project = null }) {
   const inPeriod = new Set(days);
   const blank = () => ({ done: 0, worked: 0, turns: 0, ms: 0 });
@@ -61,7 +61,7 @@ export function summary(tasks, { days, project = null }) {
     for (const day of Object.keys(t.work ?? {})) if (!since || day < since) since = day;
     if (project !== null && x.project !== project) continue;
     const row = perProject.get(x.project ?? null) ?? blank();
-    const doneDay = t.status === "done" && !isDropped(t) && t.done_at ? localDay(t.done_at) : null;
+    const doneDay = t.status === "done" && !isDropped(t) && !t.freed && t.done_at ? localDay(t.done_at) : null;
     if (doneDay && inPeriod.has(doneDay)) {
       totals.done++; row.done++; perDay.get(doneDay).done++;
     }

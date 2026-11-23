@@ -97,8 +97,8 @@ test("what's read is cleaned: odd values, missing fields, junk entries", () => {
     projects: [{ id: "p" }, null, 3],
     tasks: [{ id: "a", title: 7, status: "bogus", priority: "high", due: "tomorrow", tabs: ["tb1", 2], history: [{ s: "doing", at: 1 }, { s: "?" }] }, "junk"],
   }));
-  assert.equal(d.settings.wip, 1);
-  assert.equal(d.settings.stale_days, 3);
+  assert.equal("wip" in d.settings, false, "gone in 1.7.9: the in-progress limit");
+  assert.equal("stale_days" in d.settings, false, "and days without movement");
   assert.equal(d.projects.length, 1);
   assert.equal(d.projects[0].name, "Untitled");
   assert.equal(d.tasks.length, 1);
@@ -124,14 +124,17 @@ test("files from before: repos and repo read as folders and folder, deleted task
   assert.deepEqual(d.tasks.map((t) => [t.id, t.folder, "repo" in t]), [["1", "~/dev/x", false], ["3", "~/notes", false]]);
   assert.equal("track" in d.settings, false);
   assert.equal(d.settings.park_after, 0, "parking idle agents is off unless chosen");
-  assert.equal(d.settings.pause_after, 1);
+  assert.equal("pause_after" in d.settings, false, "gone in 1.7.9: quiet projects pausing by themselves");
+  const pz = parse(JSON.stringify({ projects: [{ id: "q", name: "Q", paused: true, paused_auto: 5 }, { id: "m", name: "M", paused: true }] })).projects;
+  assert.deepEqual(pz.map((p) => [p.id, p.paused, "paused_auto" in p]), [["q", true, false], ["m", true, false]], "paused by taskr before: stays paused, as yours");
   assert.equal(parse(JSON.stringify({ settings: { park_after: 7 } })).settings.park_after, 0, "only the offered choices");
   assert.equal(parse(JSON.stringify({ settings: { park_after: 240 } })).settings.park_after, 240);
   assert.equal(parse(JSON.stringify({ settings: { park_after: 120 } })).settings.park_after, 120, "more times: hours and days");
   assert.equal(parse(JSON.stringify({ settings: { park_after: 10080 } })).settings.park_after, 10080);
-  assert.equal(parse(JSON.stringify({ settings: { pause_after: 0.5 } })).settings.pause_after, 0.5, "half a day");
-  assert.deepEqual(d.settings.bar, { done: true, doing: true, working: true, open: true }, "the status bar shows everything unless turned off");
-  assert.deepEqual(parse(JSON.stringify({ settings: { bar: { open: false, x: 1 } } })).settings.bar, { done: true, doing: true, working: true, open: false });
+  assert.deepEqual(d.settings.bar, { done: true, turns: true, working: true, open: true }, "the status bar shows everything unless turned off");
+  assert.deepEqual(d.settings.stats, { done: true, turns: true }, "Stats shows Done and Turns unless turned off");
+  assert.deepEqual(parse(JSON.stringify({ settings: { stats: { done: false } } })).settings.stats, { done: false, turns: true });
+  assert.deepEqual(parse(JSON.stringify({ settings: { bar: { open: false, x: 1 } } })).settings.bar, { done: true, turns: true, working: true, open: false });
   assert.equal("review_after" in parse(JSON.stringify({ settings: { review_after: 60 } })).settings, false);
   assert.equal(parse(JSON.stringify({ settings: { review_after: 0 } })).settings.park_after, 0);
 });
@@ -235,7 +238,7 @@ test("world: tabs are found through the store and through terminal labels", () =
   assert.deepEqual(look().taskById.get("next1").tabs, ["tb4"]);
 });
 
-test("Now: what needs you first, each task once", () => {
+test("Now: what needs you first, then what's yours to do next, each task once; the Inbox stays out", () => {
   world();
   const w = look();
   const v = nowView(w, parse(H.files.get(FILE())));
@@ -243,10 +246,9 @@ test("Now: what needs you first, each task once", () => {
   assert.deepEqual(ids(v.needs), ["blocked1"]);
   assert.deepEqual(ids(v.finished), ["review1"], "its agent finished: that comes before its stage");
   assert.deepEqual(ids(v.working).sort(), ["doing1", "remote1"]);
-  assert.deepEqual(ids(v.review), []);
-  assert.deepEqual(ids(v.doing), []);
+  assert.deepEqual(Object.keys(v), ["needs", "finished", "working", "next", "later"], "no In progress, To review or Inbox in Now");
   assert.deepEqual(ids(v.next), ["next2", "next1"], "a file with priorities keeps their order");
-  assert.deepEqual(ids(v.inbox).sort(), ["inbox1", "inbox2"]);
+  assert.ok(!Object.values(v).flat().some((x) => x.t.status === "inbox"), "ideas and imported issues wait in Projects and the board");
   assert.deepEqual(ids(v.later), ["wait1"], "Waiting, from before, is parked");
   const all = Object.values(v).flat().map((x) => x.t.id);
   assert.equal(new Set(all).size, all.length);
@@ -553,7 +555,7 @@ test("Now and Projects stacked: each list its own view, the books kept once, key
   assert.ok(now.c.focused && !projects.c.focused, "Now takes the keys");
 });
 
-test("Now: an agent that finished, seen or not, is in Finished (unseen first); in progress isn't 'doing now'", () => {
+test("Now: an agent that finished, seen or not, is in Finished (a queue, last turn first); in progress isn't 'doing now'", () => {
   world();
   const d = JSON.parse(H.files.get(FILE()));
   // t4 is done (unseen) on tab tb4: give it to a task in Next.
@@ -565,8 +567,13 @@ test("Now: an agent that finished, seen or not, is in Finished (unseen first); i
   w = build({ data, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
   assert.ok(nowView(w, data).finished.some((x) => x.t.id === "later-agent"), "seen: still waiting for a word from you");
   assert.ok(!nowView(w, data).next.some((x) => x.t.id === "later-agent"));
-  // Unseen first: t8 (review1) finished, not seen; t4 seen.
-  assert.deepEqual(nowView(w, data).finished.map((x) => x.t.id), ["review1", "later-agent"]);
+  // A queue: the turn that ended last on top, seen or not; seeing it doesn't move it.
+  const T = Date.now() + 3600000; // after any stage change: not decided on
+  const ended = { review1: T, "later-agent": T + 1000 };
+  const at = (x) => ended[x.t.id] ?? null;
+  assert.deepEqual(nowView(w, data, at).finished.map((x) => x.t.id), ["later-agent", "review1"], "seen, but its turn ended last");
+  ended.review1 = T + 2000;
+  assert.deepEqual(nowView(w, data, at).finished.map((x) => x.t.id), ["review1", "later-agent"], "a newer turn goes on top");
   // Parked until its agent works: in Later while it's idle.
   data.tasks.find((t) => t.id === "later-agent").snooze = "agent";
   assert.ok(nowView(w, data).later.some((x) => x.t.id === "later-agent"));
@@ -588,7 +595,7 @@ test("Later: parked until a day or someday, out of Now's lists, soonest first", 
   const ids = (l) => l.map((x) => x.t.id);
   assert.deepEqual(ids(v.later).sort(), ["inbox1", "next1", "wait1"]);
   assert.equal(ids(v.later).at(-1), "next1", "someday last");
-  assert.ok(!ids(v.next).includes("next1") && !ids(v.inbox).includes("inbox1"));
+  assert.ok(!ids(v.next).includes("next1"));
   assert.ok(ids(v.needs).includes("blocked1"));
   // Starting it is no longer putting it off.
   const t = data.tasks.find((x) => x.id === "next1");
@@ -708,6 +715,13 @@ test("an agent's state from its title as the core has it (Herdr strips the mark 
   await look();
   assert.equal(top(), "idle");
   H.focused = null;
+  // Its clock is its title's: the core's stamp, from a report days ago, isn't how long it's been idle
+  // (nor what Park idle agents counts from).
+  const t6 = H.terminals.find((t) => t.address === "t6");
+  t6.status_ms = Date.now() - 3 * 86400000;
+  await look();
+  const e6 = [...v.world.byTab.values()].flat().find((e) => e.a.address === "t6");
+  assert.ok(e6.quiet && Date.now() - v.sinceOf(e6) < 60000, "since its title last changed, not days ago");
 });
 
 test("an agent that reports no state: told after a minute, and restarted in its own terminal", async () => {
@@ -982,40 +996,47 @@ test("park idle agents: off by default; when set, any task waiting on you is par
   assert.equal(v.store.task(id).snooze, null);
   assert.equal(v.store.task(id).status, "doing");
 });
-test("quiet projects pause by themselves and come back at the next sign of life; one you pause stays", async () => {
-  const old = Date.now() - 5 * DAY;
-  // pa (App) has an agent at work (doing1, t1); pw (Website) and pq (quiet) have had nothing for days.
-  const v = await sidebar({ settings: { pause_after: 1 }, projects: [
-    { id: "pa", name: "App", repos: ["~/dev/app"], active_at: old },
-    { id: "pw", name: "Website", repos: ["~/dev/web"], active_at: old },
-    { id: "pq", name: "Quiet", repos: [], active_at: old },
-    { id: "pm", name: "Mine", repos: [], paused: true, active_at: old },
-    { id: "pn", name: "New", repos: [] } ] });
-  await v.store.update((d) => { for (const t of d.tasks) if (t.project === "pw" || t.folder === "~/dev/web") { t.updated = old; t.history = [{ s: t.status, at: old }]; } });
+test("a stale stamp from Herdr isn't days idle: taskr's own sighting of the change counts, the later one", async () => {
+  const v = await sidebar();
+  const id = v.store.data.tasks.find((t) => t.auto).id;
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  H.agents.find((a) => a.address === "t4").status = "idle";
+  // Herdr hands an old stamp (from before the session went silent); taskr saw it stop a minute ago.
+  t4.status_ms = Date.now() - 3 * 86400000;
+  v.since.t4 = { s: "idle", at: Date.now() - 60000 };
+  await v.store.update((d) => { d.settings.park_after = 1440; });
   await tick(v);
-  const p = (id) => v.store.project(id);
-  assert.equal(p("pa").paused, false, "an agent works there");
-  assert.equal(p("pw").paused, true);
-  assert.ok(p("pw").paused_auto);
-  assert.equal(p("pq").paused, true);
-  assert.ok(p("pn").active_at, "a project seen for the first time starts counting now");
-  assert.equal(p("pn").paused, false);
-  // A task of Website changes: it's back.
-  await v.store.update((d) => { d.tasks.find((t) => t.id === "next1").updated = Date.now(); });
   await tick(v);
-  assert.equal(p("pw").paused, false);
-  assert.equal(p("pw").paused_auto, undefined);
-  // Paused by you: stays, whatever happens; made active by you, its quiet days count from now.
-  await v.store.update((d) => { d.projects.find((x) => x.id === "pm").paused = true; d.tasks.push({ ...task({ id: "m1", project: "pm" }), updated: Date.now() }); });
-  await tick(v);
-  assert.equal(p("pm").paused, true);
-  // Never: nothing pauses.
-  await v.store.update((d) => { d.settings.pause_after = 0; const q = d.projects.find((x) => x.id === "pq"); q.paused = false; delete q.paused_auto; });
-  await tick(v);
-  assert.equal(p("pq").paused, false);
+  const e = v.world.taskById.get(id).agents[0];
+  assert.ok(Date.now() - v.sinceOf(e) < 120000, "a minute, not three days");
+  assert.equal(v.store.task(id).snooze, null, "not parked: idle a minute");
 });
 
-test("a task with no plan you touch is yours: it keeps its name and its status", async () => {
+test("projects pause only by your hand; a paused project's work is out of Now, but what you parked stays in Later", async () => {
+  const old = Date.now() - 5 * DAY;
+  // pw (Website) has had nothing for days: it doesn't pause by itself (parking idle agents does that job).
+  const v = await sidebar({ projects: [
+    { id: "pa", name: "App", repos: ["~/dev/app"], active_at: old },
+    { id: "pw", name: "Website", repos: ["~/dev/web"], active_at: old } ] });
+  await v.store.update((d) => { for (const t of d.tasks) if (t.project === "pw" || t.folder === "~/dev/web") { t.updated = old; t.history = [{ s: t.status, at: old }]; } });
+  await tick(v);
+  await tick(v);
+  const p = (id) => v.store.project(id);
+  assert.equal(p("pw").paused, false, "quiet, still active");
+  // Paused by you: its work leaves Now; what you parked stays in Later, where you put it.
+  await v.store.update((d) => { d.projects.find((x) => x.id === "pw").paused = true; });
+  await tick(v);
+  const parkedWeb = v.world.tasks.find((x) => x.project === "pw" && x.t.status !== "done" && !x.t.snooze && !["blocked", "working"].includes(x.top));
+  assert.ok(parkedWeb);
+  assert.ok(!Object.entries(nowView(v.world, v.store.data)).some(([k, l]) => k !== "later" && l.includes(parkedWeb)), "a paused project's work is out of Now");
+  parkedWeb.t.snooze = "someday";
+  assert.ok(nowView(v.world, v.store.data).later.includes(parkedWeb), "parked: still in Later");
+  parkedWeb.t.snooze = null;
+  await tick(v);
+  assert.equal(p("pw").paused, true, "stays paused till you bring it back");
+});
+
+test("a task with no plan you touch is yours: it keeps its name; its agent gone, it closes as any task", async () => {
   const v = await sidebar();
   const id = v.store.data.tasks.find((t) => t.auto).id;
   // Moved to the top from the list's keys: kept.
@@ -1023,11 +1044,36 @@ test("a task with no plan you touch is yours: it keeps its name and its status",
   v.command("top", cx());
   await settle();
   assert.equal(v.store.task(id).auto, undefined);
+  const name = v.store.task(id).title;
+  // Its tab closes: a terminal left alone is no task. Closed a moment later, as one with no plan.
   H.spaces[0].tabs = H.spaces[0].tabs.filter((t) => t.id !== "tb4");
   H.agents = H.agents.filter((a) => a.address !== "t4");
   await tick(v);
-  assert.ok(!globalThis.__taskr.books.info.gone?.[id], "not counted down");
-  assert.equal(v.store.task(id).status, "doing", "still as you left it");
+  assert.ok(globalThis.__taskr.books.info.gone?.[id], "counted down");
+  assert.equal(v.store.task(id).status, "doing", "not at once");
+  globalThis.__taskr.books.info.gone[id] -= 61000;
+  await tick(v);
+  assert.equal(v.store.task(id).status, "done");
+  assert.equal(v.store.task(id).freed, true, "its tabs are terminals again");
+  assert.equal(v.store.task(id).title, name, "its name stays yours");
+});
+
+test("a planned task whose agent quit, with only a shell left in its tab, closes; one you only opened a terminal for doesn't", async () => {
+  // shell1: a conversation kept and a tab with a shell in front (its agent quit while taskr wasn't looking).
+  // term1: a tab with a terminal and no agent ever.
+  const v = await sidebar({ tasks: [
+    task({ id: "shell1", title: "Had an agent", status: "doing", tabs: ["tb3"], sessions: [{ app: "claude", id: "sx", cwd: "~/dev/app", at: 1 }] }),
+    task({ id: "term1", title: "Just a terminal", status: "doing", tabs: ["tb6"] }) ] });
+  await tick(v);
+  const gone = globalThis.__taskr.books.info.gone;
+  assert.ok(gone.shell1, "counted down");
+  assert.ok(!gone.term1, "no agent ever: not counted");
+  gone.shell1 -= 31000;
+  await tick(v);
+  assert.equal(v.store.task("shell1").status, "done");
+  assert.equal(v.store.task("term1").status, "doing");
+  await tick(v);
+  assert.ok(!v.world.taskOfTab.has("tb3"), "its tab is a plain terminal again");
 });
 
 test("a deleted task is gone from the file, and its tab's agent gets a task again", async () => {
@@ -1401,7 +1447,7 @@ test("a paused project: out of Now and Projects' list, but for an agent that nee
   d.projects.find((p) => p.id === "pa").paused = true;
   const w = build({ data: d, sp: H.spaces, ps: H.panes, ag: H.agents, ts: H.terminals, repos: new RepoCache(), h: H.home });
   const v = nowView(w, d);
-  const all = [...v.review, ...v.doing, ...v.next, ...v.inbox, ...v.later];
+  const all = [...v.next, ...v.later].filter((x) => !x.t.snooze);
   assert.ok(!all.some((x) => x.project === "pa"), "its waiting work leaves Now");
   assert.ok(v.needs.some((x) => x.t.id === "blocked1"), "an agent asking still shows");
   const tree = projectTree(w, d, H.home);
@@ -1427,7 +1473,7 @@ test("sidebar: stacked lists fold to their header, never both", async () => {
 });
 
 test("flow: the turn writes the stage only when an agent starts work; quitting closes only what has no plan", async () => {
-  const { onWorking, quitStage, adoptStage, prReady, stale, nowSection, parkDue } = await import("../mods/taskr/lib/flow.js");
+  const { onWorking, quitStage, adoptStage, prReady, nowSection, parkDue } = await import("../mods/taskr/lib/flow.js");
   assert.equal(onWorking({ status: "next" }), "doing");
   assert.equal(onWorking({ status: "inbox" }), "doing");
   assert.equal(onWorking({ status: "done" }), "doing", "work on a closed task opens it again");
@@ -1446,25 +1492,22 @@ test("flow: the turn writes the stage only when an agent starts work; quitting c
   assert.equal(prReady(t, { state: "MERGED", createdAt: new Date().toISOString() }), false);
   assert.equal(prReady(t, null), false);
   const now = Date.now(), day = 86400000;
-  assert.equal(stale({ status: "doing" }, null, now - 5 * day, now, 3 * day), true);
-  assert.equal(stale({ status: "doing" }, "idle", now - 5 * day, now, 3 * day), true);
-  assert.equal(stale({ status: "doing" }, "working", now - 5 * day, now, 3 * day), false);
-  assert.equal(stale({ status: "next" }, null, now - 5 * day, now, 3 * day), false);
-  assert.equal(stale({ status: "doing", snooze: "someday" }, null, now - 5 * day, now, 3 * day), false);
   const x = (t, top = null) => ({ t, top });
   assert.equal(nowSection(x({ status: "done" }, "blocked")), null);
   assert.equal(nowSection(x({ status: "next", snooze: "someday" }, "blocked")), "needs");
   assert.equal(nowSection(x({ status: "review" }, "done")), "finished");
   assert.equal(nowSection(x({ status: "doing", snooze: "agent" }, "idle")), "later");
   assert.equal(nowSection(x({ status: "doing" }, "idle")), "finished", "an idle agent waits for you: not 'doing'");
-  assert.equal(nowSection(x({ status: "doing" })), "doing", "in progress, no agent waiting");
+  assert.equal(nowSection(x({ status: "doing" })), "next", "in progress, no agent waiting: yours to pick up, in Next");
+  assert.equal(nowSection(x({ status: "review" })), "next", "to review, nothing waiting: in Next too");
+  assert.equal(nowSection(x({ status: "inbox" })), null, "the Inbox stays out of Now");
   // Finished holds the turns you haven't decided on: moved to Next after the turn ended, it's in Next
   // (a pending one), until another turn ends; moved before it, still Finished.
   const turn = now - 3600000;
   const moved = (s, at) => ({ status: s, history: [{ s: "doing", at: turn - 9000 }, { s, at }] });
   assert.equal(nowSection(x(moved("next", turn + 60000), "idle"), turn), "next");
   assert.equal(nowSection(x(moved("next", turn + 60000), "done"), turn), "next", "even unseen: you chose");
-  assert.equal(nowSection(x(moved("doing", turn + 60000), "idle"), turn), "doing");
+  assert.equal(nowSection(x(moved("doing", turn + 60000), "idle"), turn), "next", "decided on: yours to do");
   assert.equal(nowSection(x(moved("next", turn - 60000), "idle"), turn), "finished", "a turn ended since");
   assert.equal(nowSection(x(moved("next", turn + 60000), "idle")), "finished", "no turn time known: as before");
   assert.equal(parkDue({ status: "doing", auto: true }, "idle", now - 2 * 3600000, now, 60), true);
@@ -1561,6 +1604,8 @@ test("stats: agent work split at midnight, kept per day for 120 days; a period c
     x({ status: "done", done_at: Date.now(), auto: true, work: { [today]: [600000, 3] } }, "pw"),
     x({ status: "doing", auto: true, work: { [days[0]]: [60000, 1], "2020-01-01": [9, 9] } }, null),
     x({ status: "done", done_at: Date.now() - 30 * 86400000 }),
+    // Closed because its agent quit: a session ending, not work you finished.
+    x({ status: "done", done_at: Date.now(), freed: true, work: { [today]: [0, 0] } }, "pw"),
   ];
   const s = summary(tasks, { days });
   assert.deepEqual(s.totals, { done: 2, worked: 3, turns: 6, ms: 4260000 }, "done: any task done, not dropped; worked: any task whose agents worked");

@@ -55,7 +55,7 @@
           <li>Press <kbd>n</kbd>. Title: <em>Checkout total ignores the coupon</em>. Pick the folder, due <code>today</code>, next step <em>Write a failing test first</em>, then press <kbd>t</kbd> to put it at the top.</li>
           <li>Press <kbd>w</kbd>. taskr creates <code>task/checkout-total-ignores-the-coupon</code> in <code>~/.herdr/worktrees/&lt;repo&gt;/…</code> and starts your agent there, with the title and the next step as its first message.</li>
           <li>Keep working. The task sits under <strong>Working</strong> with the agent's model and time; you'll see it jump to <strong>Needs you</strong> if it asks.</li>
-          <li>When it stops, it shows under <strong>Finished</strong>. Open the detail, check <strong>Changes</strong>, then <strong>Ask for a pull request</strong>: once the PR is open, the task moves to <strong>To review</strong> by itself (it has its own branch).</li>
+          <li>When it stops, it shows under <strong>Finished</strong>. Open the detail, check <strong>Changes</strong>, then <strong>Ask for a pull request</strong>: once the PR is open, the task moves to <strong>Review</strong> by itself (it has its own branch).</li>
           <li>If CI fails, <strong>Send failed checks</strong> sends the agent their names. When the PR is merged, right-click → <strong>Archive</strong> and choose <em>Archive and remove worktree</em>.</li>
         </ol>
       </section>
@@ -92,7 +92,7 @@
           <li>Answer from the detail's <strong>Message the agent</strong> box, or <kbd>enter</kbd> to jump to the agent.</li>
           <li>Herdr's next and previous agent keys follow taskr's order, so they visit the agents in the order the list shows them.</li>
         </ol>
-        <p>Set a <strong>In-progress limit</strong> in the settings (the gear in the status bar) to keep yourself honest: the status bar warns when you have more in progress than that.</p>
+        <p>Many agents open? Turn on <strong>Park idle agents</strong> in the settings (the gear in the status bar): one left idle that long is parked in Later until it works again.</p>
       </section>
 
       <section class="example" id="adopt">
@@ -155,7 +155,7 @@ herdr-app do layout.toggle '{"id":"taskr-detail"}'  <span class="c"># show or hi
         <h2>A weekly review</h2>
         <p class="when">Friday afternoon. What moved, what's stuck, what's next.</p>
         <ol>
-          <li>Under <strong>In progress</strong>, a task that hasn't moved in a few days (you set how many) shows its time in yellow. Decide each one: back to Next, <strong>Waiting on…</strong> someone with a day to follow up, or Dropped. <strong>Later</strong> holds what you parked, and what you wait on comes back by itself.</li>
+          <li>In <strong>Next</strong>, a task in progress with no agent open says so. Decide each one: resume it, <strong>Waiting on…</strong> someone with a day to follow up, or Dropped. <strong>Later</strong> holds what you parked, and what you wait on comes back by itself.</li>
           <li>The board's <strong>Done</strong> column shows the last seven days; the status bar counts what you finished today.</li>
           <li>Finished tasks are in the board's <strong>Done</strong> column. Archive what's settled to put its tabs away.</li>
           <li>Drag next week's work from Inbox onto Next, in the order you'll do it.</li>

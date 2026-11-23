@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.7.9 — 2026-11-23
+
+### Changed
+- **Now is shorter: Needs you, Finished, Working, Next and Later.** *In progress* and *To review* were
+  a second place for work that's yours to pick up: a task in progress or to review with no agent at
+  work or waiting now shows in **Next**, with what's pending. The **Inbox** (ideas, imported issues)
+  waits in Projects and on the board until you move one to Next. The stages stay, as the board's
+  columns.
+- **A terminal alone isn't a task, planned or not.** When the agent of a task you gave details to
+  quits (or its tab closes), the task is done (or stays in Review) and its tab is a plain terminal
+  again, as for a task with no plan: *Resume agent* picks it up. One you only opened a terminal for,
+  with no agent ever, stays as it is.
+- **Done counts what you marked done, and the status bar counts turns.** A session that ended
+  because its agent quit was counted as done: working only with terminals, *Done today* read 2 with
+  nothing finished. Now *Done* (status bar and Stats) counts the tasks you marked done, and the status
+  bar has **N turns today**, the turns your agents finished (as Stats' *Turns*).
+- **Stats charts turns per day**, beside agent time and tasks done, and **Shown in Stats** in the
+  settings hides Done or Turns (its number, chart and column).
+- **Gone: the in-progress limit, days without movement, and quiet projects pausing by themselves.**
+  They counted a stage that a session doesn't have, and the last one hid whole projects, parked work
+  and all. *Park idle agents* puts aside what's idle, task by task, in Later. A project you pause
+  stays paused till you bring it back, and so does one taskr had paused by itself.
+
+### Fixed
+- **Finished is a queue: what you look at stays put.** Its unseen turns came first, so looking at one
+  sent it to the bottom. Now the turn that ended last is on top, seen or not, and a task goes down
+  only as other turns end.
+- **An agent is parked a day after it stops, not the first time it stops.** Its idle time came from
+  the stamp Herdr hands mods, which can be days old: for an agent that reports no state, from its
+  last report; for one that went silent and reports again, still the old one. *Park idle agents*
+  parked it whenever it stopped (and it came back as soon as it worked), and its row read *idle 1d*
+  minutes after. Now the clock is the later of that stamp and the moment taskr saw the change (for
+  one that reports nothing, its title's).
+- **A stage you chose holds after a restart.** Put in Next after its turn, a task went back to
+  Finished when Herdr reopened its agent: the agent opening idle read as the end of a turn. Now the
+  task keeps when its agent last ended one (`turn_at`), and only a new turn brings it back.
+- **What you parked stays in Later when its project is paused.**
+- **A task in progress with no agent open says so**: *no agent open · in progress 3h*.
+
 ## 1.7.8 — 2026-11-15
 
 ### Fixed

@@ -34,8 +34,9 @@ export const workDir = (t) => t?.foreground?.cwd ?? t?.cwd ?? null;
 
 export const shellOnly = (t) => Boolean(t?.foreground) && t.pid != null && t.foreground.pid === t.pid && !agentInFront(t);
 
-// A task with no plan whose agent quit: its tabs are no longer its own (terminals again).
-export const released = (t) => t?.auto === true && (t.freed === true || !OPEN.has(t.status));
+// A task whose agent quit: its tabs are no longer its own (terminals again). Planned or not; a
+// closed task with no plan lets go of them too.
+export const released = (t) => t?.freed === true || (t?.auto === true && !OPEN.has(t.status));
 
 // Live sub-agents of `addr`, depth first.
 function kids(ts, addr, depth = 1) {
@@ -164,26 +165,25 @@ export function build({ data, sp, ps, ag, ts, repos, h, titles = null }) {
 // The ids of the projects put aside for now.
 export const pausedProjects = (data) => new Set(data.projects.filter((p) => p.paused).map((p) => p.id));
 
-// Now's lists, in the order things move forward: what the agents ask of you (needs you, finished,
-// working), then the stages (to review, doing, next, inbox), then what's parked. Each task once.
-// Work in progress, for the limit: tasks in progress (`doing`), not parked, whatever their agent does.
-export const doingCount = (w) => w.tasks.filter((x) => x.t.status === "doing" && !isLater(x.t)).length;
-
-export const NOW_SECTIONS = ["needs", "finished", "working", "review", "doing", "next", "inbox", "later"];
+// Now's lists: what the agents ask of you (needs you, finished, working), what's yours to do next,
+// then what's parked. Each task once.
+export const NOW_SECTIONS = ["needs", "finished", "working", "next", "later"];
 
 // `turnAt(x)`: when its agent's last turn ended (see flow.js `nowSection`).
 export function nowView(w, data, turnAt = () => null) {
   const lists = Object.fromEntries(NOW_SECTIONS.map((k) => [k, []]));
-  // A paused project's work is out of Now, but for an agent that needs you or works.
+  // A paused project's work is out of Now, but for an agent that needs you or works, and what you
+  // parked: it stays in Later, where you put it (put aside already, not twice).
   const paused = pausedProjects(data);
   for (const x of w.tasks) {
     const at = nowSection(x, turnAt(x));
-    if (!at || (paused.has(x.project) && !["blocked", "working"].includes(x.top))) continue;
+    if (!at || (paused.has(x.project) && !["blocked", "working"].includes(x.top) && at !== "later")) continue;
     lists[at].push(x);
   }
   for (const k of NOW_SECTIONS) if (k !== "later") lists[k].sort((a, b) => byRank(a.t, b.t));
-  // Finished: the turns you haven't seen first, then those waiting for a word from you.
-  lists.finished.sort((a, b) => (a.top === "done" ? 0 : 1) - (b.top === "done" ? 0 : 1));
+  // Finished is a queue: the turn that ended last on top. Seeing one doesn't move it (it stays,
+  // no longer bold); it goes down as other turns end.
+  lists.finished.sort((a, b) => (turnAt(b) ?? 0) - (turnAt(a) ?? 0) || byRank(a.t, b.t));
   // Soonest back first; "until its agent works", then someday, last.
   const back = (t) => (t.snooze === "someday" ? 2 : t.snooze === "agent" ? 1 : 0);
   lists.later.sort((a, b) => back(a.t) - back(b.t) || String(a.t.snooze).localeCompare(String(b.t.snooze)) || byRank(a.t, b.t));

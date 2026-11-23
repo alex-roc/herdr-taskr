@@ -30,6 +30,12 @@ export class Titles {
     return unreported(e) && this.silentFor(e.a.address, now) > SILENT_MS;
   }
 
+  // When its state (as its title says) last changed, as taskr saw it: the clock for one that reports
+  // nothing, since the core's own stamp is from its last report, maybe days ago.
+  changedAt(address) {
+    return this.c.changed?.[address] ?? null;
+  }
+
   // How long it has reported nothing, as far as taskr has seen (0: not seen silent).
   silentFor(address, now = Date.now()) {
     const at = this.c.quietAt?.[address];
@@ -59,6 +65,10 @@ export class Titles {
           const looking = Boolean(window()?.active) && focused()?.terminal === a;
           if (!looking && ["working", "done"].includes(c.info[a])) state = "done";
         }
+        c.changed ??= {};
+        // done and idle as one: looking at it doesn't move its clock.
+        const was = c.info[a] === "done" ? "idle" : c.info[a];
+        if (was !== (state === "done" ? "idle" : state) || !c.changed[a]) c.changed[a] = Date.now();
         if (c.info[a] !== state) { c.info[a] = state; changed = true; }
         c.seen[a] = Date.now();
         delete c.busy[a];

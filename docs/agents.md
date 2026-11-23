@@ -29,7 +29,7 @@ layout reloads it within a second of any save, from any program.
 4. **Don't mark the person's tasks done** unless they asked: when the whole task is finished, put it
    in `review`. Finishing one turn of work isn't finishing the task.
 5. **Don't delete tasks.** Mark one dropped if it must go. Removing an entry from `tasks.json` is what the person's *Delete* does, and it also closes the task's tabs and the agent in them. Old `deleted: true` entries are dropped when the file is read.
-6. **Leave `tabs`, `sessions`, `agent_ms`, `work`, `worktree`, `branch`, `auto` and `freed` alone** unless you know why: taskr keeps them.
+6. **Leave `tabs`, `sessions`, `agent_ms`, `work`, `turn_at`, `worktree`, `branch`, `auto` and `freed` alone** unless you know why: taskr keeps them.
    `agent`, `model` and `effort` say how the task's agent starts (the person's *Start with…*).
 7. Never put secrets in a task. The file is plain text in the person's home.
 
@@ -60,13 +60,14 @@ jq --arg id "agent-$now" --argjson now "$now" \
 
 ## Settings and old keys
 
-`settings` holds `wip`, `stale_days`, `agent`, `usage`, `reminders`, `activity`, `park_after` (minutes
-a task, planned or not, stays with its agent idle before it's parked until that agent works: 60,
-120, 240, 480, 1440, 2880, 4320, 10080, or 0 for never),
-`pause_after` (days with nothing happening before a project pauses by itself: 0.5, 1, 2, 3, 7, 14, 30,
-or 0 for never) and `bar` (what the status bar shows: `done`, `doing`, `working`, `open`, each true
-unless false). A project paused by taskr has `paused_auto` (taskr lifts it when something happens); leave
-`paused_auto` and `active_at` to taskr.
+`settings` holds `agent`, `usage`, `reminders`, `activity`, `park_after` (minutes a task, planned or
+not, stays with its agent idle before it's parked until that agent works: 60, 120, 240, 480, 1440,
+2880, 4320, 10080, or 0 for never) and `bar` (what the status bar shows: `done`, `working`, `open`,
+each true unless false), and `stats` (what Stats shows besides agent time: `done`, `turns`, the
+same way). Before 1.7.9 there were `wip`, `stale_days` and `pause_after`, and a project
+taskr paused by itself had `paused_auto`: they're dropped, and that project stays
+paused, as one you paused. Leave
+`active_at` to taskr.
 Projects list their `folders`; tasks have a `folder`. Files with the old `repos` and `repo` keys are
 still read and rewritten, and so are those from before 1.7: status `waiting` (now parked with
 `waiting_on`), status `dropped` (now `outcome`), `idle` (now `snooze: "agent"`) and `review_after`.
@@ -79,6 +80,8 @@ and when its agent quits it's Done (or stays in Review, if it was there) with `"
 is then a plain terminal, and an agent started there again takes the same task back up. With
 `park_after` set, taskr parks it (`snooze: "agent"`) once its agent has been idle that long. Anything
 you change on it makes it the person's, and taskr removes `auto`. Don't set `auto` on a task you create.
+A planned task ends the same way once it has had an agent: when that agent quits and only a terminal
+is left, it's Done (or stays in Review) with `"freed": true`. Parking applies to both alike.
 
 ## Showing a task
 

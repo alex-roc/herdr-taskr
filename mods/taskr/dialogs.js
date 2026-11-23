@@ -7,7 +7,7 @@ import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui
 import { props, closeOverlay, theme, home, spaces, panes, shared, setShared, run, notify, knownAgents, terminals, layout, pickFolder } from "herdr";
 import { untrackedName } from "./lib/world.js";
 import { S } from "./strings.js";
-import { newTask, newProject, setStatus, setPaused, kept, toTop, park, unpark, PARK_AFTER, PAUSE_AFTER, BAR_ITEMS } from "./lib/store.js";
+import { newTask, newProject, setStatus, setPaused, kept, toTop, park, unpark, PARK_AFTER, BAR_ITEMS, STATS_ITEMS } from "./lib/store.js";
 import { CHOICES, stageOf, tilde, untilde, base, byRank, OPEN, parseDue, dueLabel, issueLabel, isLater, laterLabel, parseLater } from "./lib/util.js";
 import { linearKey, linearIssues } from "./lib/linear.js";
 import { place, repoState } from "./lib/git.js";
@@ -663,12 +663,6 @@ export const Dialogs = {
   settingsForm(t, cx) {
     const s = this.store.data.settings;
     const set = (patch) => (_e, cx) => cx.spawn(async (cx) => { await this.store.update((d) => { Object.assign(d.settings, patch); }); cx.notify(); });
-    const stepper = (id, value, min, max, label, key) => h_flex().gap(6).items_center()
-      .child(div().id(`${id}-minus`).size(24).rounded(6).border_1().border_color(t.input).flex().items_center().justify_center().cursor_pointer()
-        .hover((x) => x.bg(t.hover)).when(value > min, (el) => el.on_click(set({ [key]: value - 1 }))).child("−"))
-      .child(div().min_w(64).text_size(12.5).flex().justify_center().child(label))
-      .child(div().id(`${id}-plus`).size(24).rounded(6).border_1().border_color(t.input).flex().items_center().justify_center().cursor_pointer()
-        .hover((x) => x.bg(t.hover)).when(value < max, (el) => el.on_click(set({ [key]: value + 1 }))).child("+"));
     // Installed agents, and the chosen one even when it isn't.
     const agents = (this.agentList ?? []).filter((a) => a.installed || a.key === s.agent);
     const known = agents.some((a) => a.key === s.agent);
@@ -695,19 +689,18 @@ export const Dialogs = {
       .child(group("lists",
         lists ? setting(S.listsLayout, S.listsLayoutHint, h_flex().gap(4).children([["taskr-sidebar", S.listsTabs], ["taskr-split", S.listsStacked]].map(([child, label]) =>
           chip(`lists-${child}`, label, (lists.active ?? lists.children?.[0]?.id) === child, () => run("layout.select", { stack: "taskr-lists", child }))))) : null,
-        setting(S.parkAfter, S.parkAfterHint, h_flex().gap(4).flex_wrap().children(PARK_AFTER.map((m) => chip(`park-${m}`, S.parkAfterLabel(m), s.park_after === m, set({ park_after: m }))))),
-        setting(S.pauseAfter, S.pauseAfterHint, h_flex().gap(4).flex_wrap().children(PAUSE_AFTER.map((n) => chip(`pause-${n}`, S.pauseAfterLabel(n), s.pause_after === n, set({ pause_after: n })))))))
-      .child(group("limits",
-        setting(S.wipLimit, S.wipLimitHint, stepper("wip", s.wip, 1, 20, String(s.wip), "wip")),
-        setting(S.staleDays, S.staleDaysHint, stepper("stale", s.stale_days, 1, 60, S.days(s.stale_days), "stale_days")))))
+        setting(S.parkAfter, S.parkAfterHint, h_flex().gap(4).flex_wrap().children(PARK_AFTER.map((m) => chip(`park-${m}`, S.parkAfterLabel(m), s.park_after === m, set({ park_after: m })))))))
+      .child(group("stats",
+        setting(S.statsShown, S.statsShownHint, h_flex().gap(4).flex_wrap().children(STATS_ITEMS.map((k) =>
+          chip(`stats-${k}`, S.statsItems[k], s.stats?.[k] !== false, set({ stats: { ...s.stats, [k]: s.stats?.[k] === false } })))))))
+      .child(group("notices",
+        setting(S.reminders, S.remindersHint, onOff("reminders")),
+        setting(S.showActivity, S.showActivityHint, onOff("activity")))))
       .child(v_flex().flex_1().min_w(0).gap(14)
       .child(group("bar",
         setting(S.statusBar, S.statusBarHint, h_flex().gap(4).flex_wrap().children(BAR_ITEMS.map((k) =>
           chip(`bar-${k}`, S.barItems[k], s.bar?.[k] !== false, set({ bar: { ...s.bar, [k]: s.bar?.[k] === false } }))))),
         setting(S.showUsage, S.showUsageHint, onOff("usage"))))
-      .child(group("notices",
-        setting(S.reminders, S.remindersHint, onOff("reminders")),
-        setting(S.showActivity, S.showActivityHint, onOff("activity"))))
       .child(group("agents",
         setting(S.revive, S.reviveHint, onOff("revive")),
         setting(S.defaultAgent, S.defaultAgentHint, this.agentList == null ? div().text_color(t.dim).child(S.loading)

@@ -52,11 +52,6 @@ export function prReady(t, pr) {
   return Number.isFinite(opened) && opened >= since - 60000;
 }
 
-// In progress for days without anything moving (no change of yours, no agent at work): its time
-// shows in yellow on its row. `last`: when something last happened; `staleMs`: the setting.
-export const stale = (t, top, last, now, staleMs) =>
-  t?.status === "doing" && !isLater(t) && !["working", "blocked", "done"].includes(top) && now - (last ?? 0) > staleMs;
-
 // Where a task shows in Now: what its agent asks of you first (a question, a turn it finished,
 // seen or not), what it's doing, then parked, then its stage. Closed tasks aren't in Now. A task in
 // progress (doing) shows there only with no agent waiting for you: in progress isn't "doing now".
@@ -70,5 +65,7 @@ export function nowSection(x, turnAt = null) {
   if (x.top === "done" && !decided) return "finished";
   if (isLater(x.t)) return "later";
   if (x.top === "idle" && !decided) return "finished";
-  return x.t.status;
+  // What's yours to do: in progress with no agent at work or waiting, to review, next. The Inbox
+  // (ideas, imported issues) stays in Projects and the board until you pick from it.
+  return ["doing", "review", "next"].includes(x.t.status) ? "next" : null;
 }

@@ -11,7 +11,7 @@ import { icon, onScreen } from "./lib/ui.js";
 import { openDialog } from "./lib/open.js";
 import { RepoCache } from "./lib/git.js";
 import { AgentInfo } from "./lib/agentinfo.js";
-import { build, doingCount } from "./lib/world.js";
+import { build } from "./lib/world.js";
 import { Usage } from "./lib/usage.js";
 import { Titles } from "./lib/titles.js";
 import { sharedCache } from "./lib/cache.js";
@@ -94,13 +94,21 @@ export default class Taskr extends View {
     try { localStorage.setItem("since", JSON.stringify(this.since)); } catch {}
   }
 
-  // When an agent's state last changed: the core's own stamp, else its tab's
-  // (Herdr keeps working_since and changed_at per tab), else what taskr saw.
+  // When an agent's state last changed: the core's own stamp (else its tab's: Herdr keeps
+  // working_since and changed_at per tab) or what taskr saw change, whichever is later. The stamp
+  // Herdr hands mods can be stale (a session that went silent and reports again keeps the old one,
+  // days old), and an old stamp would read as days idle: parked at once, "idle 1d" minutes after.
   sinceOf(e) {
     if (!e) return null;
+    // One that reports nothing: from its title's changes (the core's stamp is from its last report).
+    if (e.quiet) return this.titles.changedAt(e.a.address) ?? Date.now();
     const tab = this.world?.spaceOfTab.get(e.a.tab)?.tab;
     const fromTab = e.status === "working" ? tab?.working_since : tab?.changed_at;
-    return e.term?.status_ms ?? fromTab ?? this.since[e.a.address]?.at ?? null;
+    const core = e.term?.status_ms ?? fromTab ?? null;
+    // What taskr saw, while it's about this same state (done and idle as one).
+    const seen = this.since[e.a.address];
+    const own = seen && seen.s === (e.status === "done" ? "idle" : e.status) ? seen.at : null;
+    return Math.max(core ?? 0, own ?? 0) || null;
   }
 
   launch(cx, task, worktree, resume = null) {
@@ -132,14 +140,14 @@ export default class Taskr extends View {
     const w = this.world;
     const d = this.store.data;
     const open = w.tasks.filter((x) => x.open);
-    // Every task done today, planned or not (a dropped one wasn't done).
-    const doneToday = w.tasks.filter((x) => !isDropped(x.t) && x.t.done_at && localDay(x.t.done_at) === today()).length;
-    const doing = doingCount(w);
+    // Tasks you marked done today, planned or not: not one closed because its agent quit (`freed`:
+    // a session ending isn't work finished), nor a dropped one.
+    const doneToday = w.tasks.filter((x) => !isDropped(x.t) && !x.t.freed && x.t.done_at && localDay(x.t.done_at) === today()).length;
+    // The agents' turns today, every task's (a turn: an agent going from working to finished or idle).
+    const turnsToday = w.tasks.reduce((n, x) => n + (x.t.work?.[today()]?.[1] ?? 0), 0);
     const needs = open.filter((x) => x.top === "blocked").length + w.untracked.filter((u) => u.top === "blocked").length;
     // As Now's Working: open tasks whose agent works (not the agents of closed or archived ones).
     const working = open.filter((x) => x.top === "working").length + w.untracked.filter((u) => u.top === "working").length;
-    const max = d.settings.wip;
-    const over = doing > max;
     const item = (id, color, iconName, text, onClick) => h_flex().id(id).gap(5).items_center().text_color(color)
       .when(Boolean(iconName), (el) => el.child(icon(iconName, 12)))
       .when(Boolean(onClick), (el) => el.cursor_pointer().hover((s) => s.opacity(0.8)).on_click(onClick))
@@ -151,7 +159,7 @@ export default class Taskr extends View {
     const show = (k) => d.settings.bar?.[k] !== false;
     return h_flex().size_full().px(14).gap(14).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.5)
       .when(show("done"), (el) => el.child(item("st-done", doneToday ? t.ansi2 : t.dim, "circle-check", S.doneToday(doneToday))))
-      .when(show("doing"), (el) => el.child(item("st-doing", over ? t.ansi3 : t.muted, null, over ? S.doingOver(doing, max) : S.doingCount(doing, max))))
+      .when(show("turns"), (el) => el.child(item("st-turns", turnsToday ? t.muted : t.dim, "rotate-ccw", S.turnsToday(turnsToday)).tooltip(S.turnsTodayHint)))
       .when(needs > 0, (el) => el.child(item("st-needs", t.blocked, "circle-alert", S.needCount(needs), () => setShared("taskr.view", "now"))))
       .when(show("working"), (el) => el.child(item("st-working", working ? t.working : t.dim, "bot", S.workingCount(working))))
       .child(div().flex_1())

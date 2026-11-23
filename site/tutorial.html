@@ -74,7 +74,7 @@ cd herdr-taskr
           <div>
             <p>Press <kbd>tab</kbd> in the list (or click <strong>Projects</strong>) to see the outline. Every folder open in Herdr shows up, under <em>No project</em> at first.</p>
             <p>Click the folder button in the header to make a project: give it a name and add its folders with <strong>Add folder…</strong>: a repository, or a plain folder with no repositories inside, goes in at once; a folder that holds several (<code>~/dev</code>) lists them to tick, with a filter, or you can <em>Add &lt;folder&gt; itself</em>. A folder in a project is only a pointer: no terminal, no task, until you start something there; right-click it to move it to another project or remove it from this one. A project's own <strong>›_</strong>, <strong>+</strong> and <strong>⋯</strong> open a terminal, a task or an agent for the whole project: they open in the project's own space, in the folder holding all its folders (<code>~/dev</code>; your home folder while it has none, or when they share nothing below it), and show at the project's level, above its folders; the agent reaches every folder and is told which they are. <strong>⋯ → Close project</strong> closes the project's space and every space of its folders (a folder's menu closes just its own). You can also drag a folder (like <code>~</code>) onto a project's name to move it there, with its tasks. Drag a project's row onto another to change their order.</p>
-            <p>Many projects? Pause the ones you're not on now (right-click → <strong>Pause project</strong>): they wait folded under <em>Paused</em> at the end, and their tasks leave Now and the board of every project, unless an agent there needs you or is working. <strong>Make active</strong> brings one back.</p>
+            <p>Many projects? Pause the ones you're not on now (right-click → <strong>Pause project</strong>): they wait folded under <em>Paused</em> at the end, and their tasks leave Now and the board of every project, unless an agent there needs you or is working; what you parked stays in Later. <strong>Make active</strong> brings one back.</p>
             <p>Each git folder shows its branch, <code>↑2</code> for commits not pushed and <code>•3</code> for uncommitted changes. Hover them for the words. A folder that isn't a repository shows none of them.</p>
           </div>
         </div>
@@ -96,7 +96,7 @@ cd herdr-taskr
         <p>The date it understood appears beside the label as you type. Use <strong>Next step</strong> for the very next action: it's shown under the task in the list, and the agent gets it too.</p>
         <p>Already have a backlog? Right-click the folder → <strong>Import GitHub issues</strong> or <strong>Import Linear issues</strong>, tick the ones you want, and they land in the Inbox with the issue attached. From Linear, the issues assigned to you come most urgent first, with their due date.</p>
         <h3>What goes first</h3>
-        <p>Next is in the order you set: drag a task onto another and it takes that place, with a line showing where it lands. Drag an idea from the Inbox onto Next and it's decided. <kbd>t</kbd> (or <strong>Move to the top</strong> in its menu) puts a task first; new tasks go last. The same order holds in Projects and on the board.</p>
+        <p>Next is in the order you set: drag a task onto another and it takes that place, with a line showing where it lands. The Inbox waits in Projects and on the board: move an idea to Next and it's in Now. <kbd>t</kbd> (or <strong>Move to the top</strong> in its menu) puts a task first; new tasks go last. The same order holds in Projects and on the board.</p>
         <div class="note"><p>Linear needs a personal API key (Linear → Settings → Security &amp; access → Personal API keys). Export it as <code>LINEAR_API_KEY</code> in your shell profile, or save it alone in <code>~/.config/herdr-app/data/taskr/linear-key</code>. taskr only reads from Linear.</p></div>
       </section>
 
@@ -133,7 +133,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
         <div class="side-by-side">
           <figure><img src="img/detail-review.png" width="734" height="1361" alt="A task in Review: its agent's last screen, a message box, and the Mark done button." loading="lazy"></figure>
           <div>
-            <p>When the agent stops, its turn is over, not the task: it shows under <strong>Finished</strong>, in bold until you look, then with its agent <em>Idle</em>, waiting for your next word (its stage stays <strong>In progress</strong>). Give it the next instruction, or, when the whole task is ready, press <strong>Ready for review</strong>: it moves to <strong>To review</strong>. Nothing is marked done by itself: that's your call. (Working with pull requests? A PR opened for a task in its own worktree moves it to Review too.)</p>
+            <p>When the agent stops, its turn is over, not the task: it shows under <strong>Finished</strong>, in bold until you look, then with its agent <em>Idle</em>, waiting for your next word (its stage stays <strong>In progress</strong>). Give it the next instruction, or, when the whole task is ready, press <strong>Ready for review</strong>: it moves to Review. It's done when you mark it, or when you quit its agent and only a terminal is left: a terminal alone isn't a task (<strong>Resume agent</strong> brings it back). (Working with pull requests? A PR opened for a task in its own worktree moves it to Review too.)</p>
             <p>Not now? Move it to <strong>Next</strong> (you'll do it: it leaves Finished for Next, your list of what's pending, until its agent finishes another turn) or <strong>Dropped</strong> (you won't), or park it: <strong>Later</strong> (right-click or <kbd>z</kbd>) for tomorrow, next week, a day you type, <em>someday</em> or <em>until its agent works</em>; <strong>Waiting on…</strong> when it depends on someone, with who and a day to follow up. It waits in a folded <em>Later</em> section, out of your in-progress count, and comes back on its day with a notification.</p>
             <p>In the detail, under <strong>Changes</strong>:</p>
             <ul>
@@ -163,7 +163,6 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
         <ul>
           <li>Drag a card to another column to change its status, or onto another card to put it at that place; click it to open its detail.</li>
           <li>Every project has its own board, in a tab of its own with only its tasks and agents. The pills at the top (All, then each project) go from one board to another; in Projects, a project's board button (shown while the pointer is on its row) opens it too.</li>
-          <li>In progress shows how many tasks are in progress against your limit, and turns amber when you're over it.</li>
           <li>Agents started from a terminal are on the board already, as tasks with no plan.</li>
         </ul>
       </section>
@@ -171,10 +170,10 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
       <section class="step" id="stats">
         <h2>See what got done</h2>
         <p>The chart button at the top of the lists (beside the board's) opens Stats as a tab; a project's menu opens it for that project.</p>
-        <figure><img src="img/stats.png" width="2240" height="1230" alt="Stats over the last 7 days: four numbers, a bar chart of agent time per day, one of tasks done per day, and a table by project." loading="lazy"><figcaption>Hover a bar for its day and its number.</figcaption></figure>
+        <figure><img src="img/stats.png" width="2240" height="1230" alt="Stats over the last 7 days: four numbers, a bar chart of agent time per day, one of turns and one of tasks done per day, and a table by project." loading="lazy"><figcaption>Hover a bar for its day and its number.</figcaption></figure>
         <ul>
           <li>Pick the period (today, or the last 7, 30 or 90 days) and every project or one.</li>
-          <li><em>Done</em> counts the tasks done; <em>Worked on</em>, the tasks whose agents worked, planned or not; <em>Turns</em>, how many times an agent finished its turn; <em>Agent time</em>, how long they worked.</li>
+          <li><em>Done</em> counts the tasks you marked done (a session that ended because its agent quit isn't one); <em>Worked on</em>, the tasks whose agents worked, planned or not; <em>Turns</em>, how many times an agent finished its turn; <em>Agent time</em>, how long they worked.</li>
           <li>Done tasks count back through their history. Agent time and turns are kept per day from 1.7 on, so a longer period says from which day it counts.</li>
         </ul>
       </section>
@@ -202,15 +201,14 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
           <div>
             <p>The gear at the right of the status bar opens the settings, in groups:</p>
             <ul>
-              <li><strong>Now and lists</strong>: Now and Projects as one list with tabs, or <em>stacked</em>, both at once, one above the other (drag the line between them; <kbd>tab</kbd> moves between them). <em>Park idle agents</em>: a task whose agent stays idle this long (from an hour to a week; never by default) is parked until the agent works again, planned or not. <em>Pause quiet projects</em>: a project where nothing happens for this long (12 hours to 30 days, or never; a day by default) pauses by itself, and comes back as soon as something does. A project you pause stays paused.</li>
-              <li><strong>Limits</strong>: how many tasks can be in progress before the status bar warns you, and how long a task in progress can go with nothing happening before its time shows in yellow.</li>
-              <li><strong>Status bar</strong>: what it shows (done today, in progress, working, open tasks; what needs you always shows), and Claude Code's and Codex's plan limits, off until you turn them on (it starts your <code>claude</code> CLI for a moment every few minutes).</li>
+              <li><strong>Now and lists</strong>: Now and Projects as one list with tabs, or <em>stacked</em>, both at once, one above the other (drag the line between them; <kbd>tab</kbd> moves between them). <em>Park idle agents</em>: a task whose agent stays idle this long (from an hour to a week; never by default) is parked until the agent works again, planned or not.</li>
+              <li><strong>Status bar</strong>: what it shows (done today, turns today, working, open tasks; what needs you always shows), and Claude Code's and Codex's plan limits, off until you turn them on (it starts your <code>claude</code> CLI for a moment every few minutes).</li>
               <li><strong>Notifications and details</strong>: reminders (when a parked task comes back, and once a day for what's due or late), and every change of stage at the bottom of a task's detail, off by default.</li>
               <li><strong>Agents</strong>: after a restart, Herdr brings every terminal back as a shell and taskr types the agent's resume into each one that had a Claude Code or Codex conversation, one at a time; and which of your installed agents <em>Start agent</em> runs.</li>
             </ul>
           </div>
         </div>
-        <figure><img src="img/settings.png" width="1796" height="1716" alt="taskr settings in groups: Now and lists, Limits, Status bar, Notifications and details, Agents." loading="lazy"></figure>
+        <figure><img src="img/settings.png" width="1796" height="1716" alt="taskr settings in groups: Now and lists, Status bar, Notifications and details, Agents." loading="lazy"></figure>
         <div class="side-by-side">
           <figure><img src="img/stacked.png" width="608" height="2160" alt="Projects and Now stacked in the sidebar: the Projects outline above, the Now list below." loading="lazy"></figure>
           <div>

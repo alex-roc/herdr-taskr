@@ -268,14 +268,14 @@ test("later dialog: a word for a day puts the task off", async () => {
   assert.deepEqual(H.closed, ["ov1"]);
 });
 
-test("settings: in groups; more times to park and pause; the status bar's items turn on and off", async () => {
+test("settings: in groups; more times to park; the status bar's items turn on and off", async () => {
   const { view } = await mount({ dialog: "settings", overlay: "ov1" });
   await settle();
   const words = text(render(view).tree);
-  for (const g of ["NOW AND LISTS", "LIMITS", "STATUS BAR", "NOTIFICATIONS AND DETAILS", "AGENTS"]) assert.match(words, new RegExp(g));
+  for (const g of ["NOW AND LISTS", "STATS", "STATUS BAR", "NOTIFICATIONS AND DETAILS", "AGENTS"]) assert.match(words, new RegExp(g));
+  for (const gone of ["LIMITS", "In-progress limit", "Days without movement", "Pause quiet projects"]) assert.doesNotMatch(words, new RegExp(gone), `${gone}: gone in 1.7.9`);
   assert.match(words, /2 h/);
   assert.match(words, /1 week/);
-  assert.match(words, /12 h/);
   const node = (id) => walk(render(view).tree).find((n) => n.id === id);
   node("bar-open").handlers.on_click({}, cx());
   await settle();
@@ -283,13 +283,53 @@ test("settings: in groups; more times to park and pause; the status bar's items 
   node("park-480").handlers.on_click({}, cx());
   await settle();
   assert.equal(view.store.data.settings.park_after, 480);
+  node("stats-turns").handlers.on_click({}, cx());
+  await settle();
+  assert.equal(view.store.data.settings.stats.turns, false);
+});
+
+test("a task in progress with no agent open says so on its row", async () => {
+  const { view } = await mount({ role: "sidebar" }, () => {
+    const d = JSON.parse(H.files.get(FILE()));
+    d.tasks.push(task({ id: "na1", title: "Lone", status: "doing", rank: -9, updated: Date.now() - 3 * 3600000, history: [{ s: "doing", at: Date.now() - 3 * 3600000 }] }));
+    H.files.set(FILE(), JSON.stringify(d));
+  });
+  assert.match(text(render(view).tree), /no agent open · in progress 3h/);
+});
+
+test("Stats: a chart of turns per day beside Done's; each turned off in the settings goes, tile, chart and column", async () => {
+  const { view } = await mount({ role: "stats" });
+  await settle();
+  const ids = () => walk(render(view).tree).map((n) => n.id).filter(Boolean);
+  assert.ok(["st-bars-time", "st-bars-turns", "st-bars-done", "st-turns", "st-done"].every((i) => ids().includes(i)));
+  assert.match(text(render(view).tree), /Turns per day/);
+  await view.store.update((d) => { d.settings.stats = { done: false, turns: true }; });
+  assert.ok(!ids().includes("st-done") && !ids().includes("st-bars-done") && ids().includes("st-bars-turns"));
+  await view.store.update((d) => { d.settings.stats = { done: true, turns: false }; });
+  assert.ok(!ids().includes("st-turns") && !ids().includes("st-bars-turns") && ids().includes("st-bars-done"));
+});
+
+test("status bar: the agents' turns today, and Done today without the sessions that ended by themselves", async () => {
+  const { view } = await mount({ role: "status" }, () => {
+    const d = JSON.parse(H.files.get(FILE()));
+    const day = new Date(); const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    d.tasks.push(task({ id: "s1", title: "A session", status: "done", done_at: Date.now(), freed: true, work: { [iso]: [60000, 3] } }));
+    d.tasks.push(task({ id: "s2", title: "Another", status: "doing", work: { [iso]: [60000, 2] } }));
+    H.files.set(FILE(), JSON.stringify(d));
+  });
+  const tree = walk(render(view).tree);
+  assert.match(tree.find((n) => n.id === "st-turns").children.map(text).join(" "), /5 turns today/);
+  const done = (v) => walk(render(v).tree).find((n) => n.id === "st-done").children.map(text).join(" ");
+  const { view: plain } = await mount({ role: "status" });
+  assert.equal(done(view), done(plain), "its agent quit: not done by you");
 });
 
 test("status bar: shows what the settings choose; the tasks that need you always", async () => {
   const { view } = await mount({ role: "status" });
-  await view.store.update((d) => { d.settings.bar = { done: false, doing: true, working: true, open: false }; });
+  await view.store.update((d) => { d.settings.bar = { done: false, working: true, open: false }; });
   const ids = walk(render(view).tree).map((n) => n.id);
-  assert.ok(!ids.includes("st-done") && !ids.includes("st-open") && ids.includes("st-doing") && ids.includes("st-working"));
+  assert.ok(!ids.includes("st-done") && !ids.includes("st-open") && ids.includes("st-working"));
+  assert.ok(!ids.includes("st-doing"), "no in-progress count: gone in 1.7.9");
   assert.ok(ids.includes("st-needs"), "needs you, always");
 });
 
@@ -373,7 +413,7 @@ test("projects reorder by dragging one onto another; a plain click still folds",
   assert.equal(view.dragProject, null);
 });
 
-test("tasks reorder by dragging a row onto another; from Inbox onto Next it changes list", async () => {
+test("tasks reorder by dragging a row onto another in their list", async () => {
   const { view } = await mount({ role: "sidebar" });
   H.shared["taskr.view"] = "now";
   const row = (id) => walk(render(view).tree).find((n) => n.id === `t-${id}`);
@@ -387,23 +427,16 @@ test("tasks reorder by dragging a row onto another; from Inbox onto Next it chan
   await settle();
   assert.deepEqual(order(), ["next1", "next2"]);
   assert.ok(c.stopped > 0, "the drop isn't also a click");
-  // An idea from the Inbox dropped onto Next: decided, at that place.
-  row("inbox1").handlers["on_mouse_down:left"]({}, cx());
-  row("next2").handlers.on_mouse_move({}, cx());
-  row("next2").handlers["on_mouse_up:left"]({}, cx());
-  await settle();
-  const d = JSON.parse(H.files.get(FILE()));
-  const t = (id) => d.tasks.find((x) => x.id === id);
-  assert.equal(t("inbox1").status, "next");
-  assert.ok(t("next1").rank < t("inbox1").rank && t("inbox1").rank < t("next2").rank, "between them");
   // Onto a row of another kind of list (Working): nothing moves.
-  const before = H.files.get(FILE());
+  const ranks = () => JSON.parse(H.files.get(FILE())).tasks.map((t) => [t.id, t.rank, t.status]);
+  await settle();
+  const before = ranks();
   row("next1").handlers["on_mouse_down:left"]({}, cx());
   row("doing1").handlers.on_mouse_move({}, cx());
   assert.ok(!row("doing1").calls.some(([m]) => m === "border_t" || m === "border_b"), "no line where it can't land");
   row("doing1").handlers["on_mouse_up:left"]({}, cx());
   await settle();
-  assert.equal(H.files.get(FILE()), before);
+  assert.deepEqual(ranks(), before);
 });
 
 test("board: a card dropped onto another takes its place, in its column", async () => {
@@ -534,7 +567,7 @@ test("waiting on someone: who and a day to follow up (three days by default); un
   assert.equal(i.waiting_on, undefined);
 });
 
-test("Now: In progress counts its rows (the limit is in the status bar); one that hasn't moved for days shows its time in yellow", async () => {
+test("Now: a task in progress with no agent open is in Next, with what's yours to do, and says so", async () => {
   const { view } = await mount({ role: "sidebar" });
   H.shared["taskr.view"] = "now";
   await view.store.update((d) => {
@@ -545,11 +578,9 @@ test("Now: In progress counts its rows (the limit is in the status bar); one tha
   });
   await settle(25);
   const tree = walk(render(view).tree);
-  // Only next1 is in the section (doing1, remote1 work and blocked1 asks): 1, not 4/2.
-  const head = tree.find((n) => n.id === "sec-doing").children.map(text).join(" ");
-  assert.match(head, /In progress\s*1/);
-  assert.doesNotMatch(head, /\//);
-  assert.match(tree.find((n) => n.id === "t-next1").children.map(text).join(" "), /in progress 10d/);
+  assert.ok(!tree.some((n) => ["sec-doing", "sec-review", "sec-inbox"].includes(n.id)), "no In progress, To review or Inbox in Now");
+  assert.match(tree.find((n) => n.id === "sec-next").children.map(text).join(" "), /Next/);
+  assert.match(tree.find((n) => n.id === "t-next1").children.map(text).join(" "), /no agent open · in progress 10d/);
 });
 
 test("Projects is an outliner: a folder dragged onto another shows where it lands and takes that place; a task goes into a folder", async () => {
@@ -702,4 +733,29 @@ test("Stats: periods and projects to pick, tiles, a chart per measure, a table b
   H.runs.length = 0;
   walk(render(side.view).tree).find((n) => n.id === "stats").handlers.on_click({}, cx());
   assert.deepEqual(H.runs.at(-1), ["tab.new", { name: "Stats", mod: "taskr", props: { role: "stats" } }]);
+});
+
+test("Now: a stage you chose holds till its agent ends a turn; reopened idle (a restart) isn't one", async () => {
+  const { view } = await mount({ role: "sidebar" }, () => {
+    const d = JSON.parse(H.files.get(FILE()));
+    // t4 (tab tb4) rests: reopened after a restart, say. Its task was put in Next an hour ago.
+    d.tasks.push(task({ id: "inc", title: "Incas", status: "next", tabs: ["tb4"], history: [{ s: "next", at: Date.now() - 3600000 }] }));
+    H.files.set(FILE(), JSON.stringify(d));
+  });
+  H.agents.find((a) => a.address === "t4").status = "idle";
+  H.shared["taskr.view"] = "now";
+  const sectionOf = (id) => {
+    let sec = null;
+    for (const n of walk(render(view).tree)) { if ((n.id ?? "").startsWith("sec-")) sec = n.id; if (n.id === `t-${id}`) return sec; }
+    return null;
+  };
+  await settle(10);
+  assert.equal(sectionOf("inc"), "sec-next", "no turn ended since you chose Next");
+  // Its agent works, then rests: a turn, and it's back in Finished.
+  H.agents.find((a) => a.address === "t4").status = "working";
+  render(view); await settle(5);
+  H.agents.find((a) => a.address === "t4").status = "idle";
+  render(view); await settle(10);
+  assert.ok(view.store.data.tasks.find((t) => t.id === "inc").turn_at > Date.now() - 60000, "the turn is kept on the task");
+  assert.equal(sectionOf("inc"), "sec-finished");
 });

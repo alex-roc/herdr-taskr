@@ -56,14 +56,17 @@ export const Stats = {
             .child(div().h(14).text_size(10.5).text_color(t.dim).whitespace_nowrap().child(dated(i) ? S.statsDay(v.day) : "")))));
     };
     const name = (id) => (id ? this.store.project(id)?.name ?? S.noProject : S.noProject);
+    // Done and Turns, each shown unless turned off in the settings (its tile, chart and column).
+    const show = (k) => this.store.data.settings.stats?.[k] !== false;
     const cell = (text, w, right = true, color = t.foreground) => div().w(w).flex_none().when(right, (el) => el.text_right()).text_color(color).child(text);
     const table = v_flex().id("st-projects").p(12).gap(4).rounded(9).bg(t.chrome).border_1().border_color(t.border)
       .child(h_flex().pb(4).gap(8).text_size(11).text_color(t.dim).border_b(1).border_color(t.border)
-        .child(div().flex_1().child(S.project)).child(cell(S.statsDone, 70, true, t.dim)).child(cell(S.statsWorked, 90, true, t.dim))
-        .child(cell(S.statsTurns, 70, true, t.dim)).child(cell(S.statsAgentTime, 90, true, t.dim)))
+        .child(div().flex_1().child(S.project)).when(show("done"), (el) => el.child(cell(S.statsDone, 70, true, t.dim))).child(cell(S.statsWorked, 90, true, t.dim))
+        .when(show("turns"), (el) => el.child(cell(S.statsTurns, 70, true, t.dim))).child(cell(S.statsAgentTime, 90, true, t.dim)))
       .children(sum.projects.map((r) => h_flex().id(`st-p-${r.id ?? "-"}`).h(24).gap(8).items_center().text_size(12)
         .child(div().flex_1().min_w(0).truncate().child(name(r.id)))
-        .child(cell(String(r.done), 70)).child(cell(String(r.worked), 90)).child(cell(String(r.turns), 70)).child(cell(hours(r.ms), 90))))
+        .when(show("done"), (el) => el.child(cell(String(r.done), 70))).child(cell(String(r.worked), 90))
+        .when(show("turns"), (el) => el.child(cell(String(r.turns), 70))).child(cell(hours(r.ms), 90))))
       .when(!sum.projects.length, (el) => el.child(div().py(6).text_size(12).text_color(t.dim).child(S.statsNothing)));
     // Agent work is kept from the first day taskr saw it: say so when the period reaches before.
     const partial = !sum.since || sum.since > days[0];
@@ -79,13 +82,15 @@ export const Stats = {
             .map((p) => pill(`spj-${p.id}`, p.name, this.statsProject === p.id, () => { this.statsProject = p.id; }, "layers")))))
       .child(v_flex().id("st-body").flex_1().min_h(0).px(14).pb(16).gap(12).overflow_y_scrollbar()
         .child(h_flex().gap(10).flex_wrap().items_stretch()
-          .child(tile("st-done", S.statsDone, String(sum.totals.done), S.statsDoneSub))
+          .when(show("done"), (el) => el.child(tile("st-done", S.statsDone, String(sum.totals.done), S.statsDoneSub)))
           .child(tile("st-worked", S.statsWorked, String(sum.totals.worked)))
-          .child(tile("st-turns", S.statsTurns, String(sum.totals.turns)))
+          .when(show("turns"), (el) => el.child(tile("st-turns", S.statsTurns, String(sum.totals.turns))))
           .child(tile("st-time", S.statsAgentTime, hours(sum.totals.ms))))
+        // One measure per chart: agent time, turns, tasks done.
         .when(n > 1, (el) => el
           .child(bars("st-bars-time", S.statsTimePerDay, sum.days.map((d) => ({ day: d.day, value: d.ms })), t.working, hours))
-          .child(bars("st-bars-done", S.statsDonePerDay, sum.days.map((d) => ({ day: d.day, value: d.done })), t.done, String)))
+          .when(show("turns"), (el) => el.child(bars("st-bars-turns", S.statsTurnsPerDay, sum.days.map((d) => ({ day: d.day, value: d.turns })), t.accent, String)))
+          .when(show("done"), (el) => el.child(bars("st-bars-done", S.statsDonePerDay, sum.days.map((d) => ({ day: d.day, value: d.done })), t.done, String))))
         .when(!this.statsProject, (el) => el.child(table))
         .when(partial, (el) => el.child(div().text_size(11).text_color(t.dim).child(sum.since ? S.statsSince(S.statsDay(sum.since)) : S.statsSinceNow))));
   },

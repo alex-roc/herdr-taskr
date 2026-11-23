@@ -17,11 +17,11 @@ export const FILE = () => `${DIR()}/tasks.json`;
 // `park_after`: minutes a task (planned or not) stays with its agent idle (seen, waiting
 // for you) before it's parked until that agent works again; 0: never (the default).
 export const PARK_AFTER = [0, 60, 120, 240, 480, 1440, 2880, 4320, 10080];
-// `pause_after`: days a project goes with nothing happening before it's paused by itself; 0: never.
-export const PAUSE_AFTER = [0, 0.5, 1, 2, 3, 7, 14, 30];
 // What the status bar shows (the ones that need you always do).
-export const BAR_ITEMS = ["done", "doing", "working", "open"];
-export const DEFAULTS = { wip: 3, stale_days: 3, agent: "claude", usage: false, reminders: true, revive: true, park_after: 0, pause_after: 1, activity: false };
+export const BAR_ITEMS = ["done", "turns", "working", "open"];
+// What Stats shows besides agent time and the tasks worked on.
+export const STATS_ITEMS = ["done", "turns"];
+export const DEFAULTS = { agent: "claude", usage: false, reminders: true, revive: true, park_after: 0, activity: false };
 const EMPTY = () => ({ version: 1, settings: { ...DEFAULTS }, projects: [], tasks: [] });
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -57,7 +57,7 @@ export function cleanTask(t) {
   const p = PRIORITY[str(t.priority).toLowerCase()] ?? num(t.priority, 2);
   // Only absolute dates: a word like "tomorrow" in the file would move every day.
   const due = /^\d{4}-\d{1,2}-\d{1,2}$/.test(str(t.due).trim()) ? parseDue(t.due) : null;
-  const { auto: _auto, idle: _idle, freed: _freed, repo: _repo, outcome: _outcome, waiting_on: _wo, agent: _ag, model: _mo, effort: _ef, work: _work, ...rest } = t;
+  const { auto: _auto, idle: _idle, freed: _freed, repo: _repo, outcome: _outcome, waiting_on: _wo, agent: _ag, model: _mo, effort: _ef, work: _work, turn_at: _turn, ...rest } = t;
   return {
     ...rest,
     id: str(t.id) || uid(),
@@ -79,7 +79,7 @@ export function cleanTask(t) {
     // Made by taskr for an agent's tab (a task with no plan): named after its agent, until the
     // person changes anything on it. `freed`: its agent quit, and its tabs are terminals again.
     ...(t.auto === true ? { auto: true } : {}),
-    ...(t.auto === true && t.freed === true ? { freed: true } : {}),
+    ...(t.freed === true ? { freed: true } : {}),
     // Parked: until a day, "someday" or "agent"; waiting on someone (a name, or "" for anyone);
     // and the last day a due reminder went out.
     snooze,
@@ -96,6 +96,9 @@ export function cleanTask(t) {
     agent_ms: num(t.agent_ms, 0),
     // Its agents' work per day (lib/stats.js): { "YYYY-MM-DD": [ms, turns] }.
     ...(cleanWork(t.work) ? { work: cleanWork(t.work) } : {}),
+    // When its agent last ended a turn (working, then finished or idle): Now's Finished holds it
+    // till you choose a stage after that. An agent that opens idle (a restart) ends no turn.
+    ...(Number.isFinite(Number(t.turn_at)) && t.turn_at > 0 ? { turn_at: Number(t.turn_at) } : {}),
     history: list(t.history).filter((h) => h && HISTORY.includes(h.s)).map((h) => ({ s: h.s, at: num(h.at, now) })),
     // Agent conversations it had, newest last, to resume after a restart.
     sessions: list(t.sessions).filter((x) => x && ["claude", "codex"].includes(x.app) && typeof x.id === "string" && /^[\w-]+$/.test(x.id))
@@ -104,15 +107,17 @@ export function cleanTask(t) {
 }
 
 export function cleanProject(p) {
-  // `paused`: put aside for now; its tasks leave Now (unless an agent needs you or works) and it
+  // `paused`: put aside for now; its tasks leave Now (unless an agent needs you or works, or they're
+  // parked: those stay in Later) and it
   // waits folded at the end of Projects. A `color` from before stays in the file, unused.
   // Its folders (git repositories or not); `repos` in files from before. `paused_auto`: when taskr
   // paused it for having nothing going on (it comes back by itself); `active_at`: since when it's
   // active (made, or made active again).
   const { repos: _repos, paused_auto: _pa, active_at: _aa, ...rest } = p;
+  // A project taskr paused by itself (before 1.7.9, for being quiet) stays paused, now as a pause of
+  // yours: nothing comes back by itself, as with what's in Later.
   const paused = p.paused === true;
   return { ...rest, id: str(p.id) || uid(), name: str(p.name).trim() || "Untitled", folders: list(p.folders ?? p.repos).filter((r) => typeof r === "string"), paused,
-    ...(paused && Number.isFinite(Number(p.paused_auto)) && p.paused_auto ? { paused_auto: Number(p.paused_auto) } : {}),
     ...(Number.isFinite(Number(p.active_at)) && p.active_at ? { active_at: Number(p.active_at) } : {}) };
 }
 
@@ -153,8 +158,11 @@ export function parse(text) {
   const d = JSON.parse(text);
   if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("not a JSON object");
   const settings = { ...DEFAULTS, ...(d.settings && typeof d.settings === "object" ? d.settings : {}) };
-  settings.wip = Math.max(1, Math.round(num(settings.wip, DEFAULTS.wip)));
-  settings.stale_days = Math.max(1, Math.round(num(settings.stale_days, DEFAULTS.stale_days)));
+  // Gone in 1.7.9: the in-progress limit, days without movement, and quiet projects pausing by
+  // themselves (parking idle agents does that job, task by task).
+  delete settings.wip;
+  delete settings.stale_days;
+  delete settings.pause_after;
   settings.agent = str(settings.agent) || DEFAULTS.agent;
   settings.usage = settings.usage === true; // off unless turned on: it starts a `claude` now and then
   settings.reminders = settings.reminders !== false;
@@ -167,10 +175,11 @@ export function parse(text) {
   if (d.settings?.park_after == null && num(d.settings?.review_after, 0) > 0) settings.park_after = PARK_AFTER.find((m) => m >= num(d.settings.review_after)) ?? 1440;
   delete settings.review_after;
   settings.park_after = PARK_AFTER.includes(num(settings.park_after, -1)) ? num(settings.park_after) : DEFAULTS.park_after;
-  settings.pause_after = PAUSE_AFTER.includes(num(settings.pause_after, -1)) ? num(settings.pause_after) : DEFAULTS.pause_after;
   settings.activity = settings.activity === true; // the detail's list of status changes: off unless turned on
   const bar = settings.bar && typeof settings.bar === "object" ? settings.bar : {};
   settings.bar = Object.fromEntries(BAR_ITEMS.map((k) => [k, bar[k] !== false])); // every item shown unless turned off
+  const stats = settings.stats && typeof settings.stats === "object" ? settings.stats : {};
+  settings.stats = Object.fromEntries(STATS_ITEMS.map((k) => [k, stats[k] !== false]));
   const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
   return {
     ...d,

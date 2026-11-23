@@ -21,7 +21,7 @@ What makes it different:
   starts working; a finished turn isn't a finished task, so Review and Done are your call. No
   pipeline to configure.
 - **Real planning, not just a list of agents.** Projects and folders, an order you set by dragging,
-  due dates in plain words, a limit on what's in progress, and work that stops moving called out.
+  due dates in plain words, and idle agents parked out of the way.
 - **Light and local.** One mod and one JSON file you (or an agent) can edit. No service, daemon,
   account or extra CLI. GitHub and Linear are optional imports.
 
@@ -48,41 +48,42 @@ What makes it different:
 The turn never writes the stage but for one thing: an agent starting work moves its task to
 **In progress**. When it stops, the task stays where it is: a turn isn't the task. **Review** is when the
 whole task is ready to check (*Ready for review* in the detail or its menu, or an agent writing it in
-the file); only you mark a planned task **Done**. If you work with pull requests, a PR opened for a task
-with its own worktree branch moves it to Review too.
+the file). A task is **Done** when you mark it, or when its agent quits and leaves only a terminal: a
+terminal alone isn't a task. If you work with pull requests, a PR opened for a task with its own
+worktree branch moves it to Review too.
 
-**Now**: one list, in the order things move forward: what the agents ask of you, then the stages,
-then what's parked. Each task once.
+**Now**: one list, in the order things move forward: what the agents ask of you, then what's yours to
+do next, then what's parked. Each task once.
 
 | Section | What's in it |
 |---|---|
 | **Needs you** | Tasks whose agent asks for you, with its question right in the row |
-| **Finished** | Tasks whose agent finished its turn and waits for a word from you: the ones you haven't seen first, in bold; then the ones you have (Idle). Only the turns you haven't decided on: change a task's stage after its turn ended (Next, to do it later) and it goes to that section, until another turn ends |
+| **Finished** | Tasks whose agent finished its turn and waits for a word from you: a queue, the turn that ended last on top; the ones you haven't seen in bold. Seeing one doesn't move it: it goes down as other turns end. Only the turns you haven't decided on: change a task's stage after its turn ended (Next, to do it later) and it goes to that section, until another turn ends (an agent reopened after a restart hasn't ended one) |
 | **Working** | Tasks with an agent at work |
-| **To review** | Tasks in Review |
-| **In progress** | Work under way with no agent working or waiting for you (its agent quit, or it never had one); your limit (`In progress 2/6`) is in the status bar |
-| **Next** | What you'll do, in the order you set: drag a row onto another |
-| **Inbox** | Ideas and imported issues, not yet decided |
+| **Next** | What's yours to do, in the order you set (drag a row onto another): tasks in Next, and those in progress or to review with no agent at work or waiting for you |
 | **Later** | Parked tasks, folded: each comes back on its day, when its agent works, or when you bring it back |
+
+The **Inbox** (ideas and imported issues, not yet decided) waits in Projects and on the board until you
+pick from it: move one to Next and it's in Now.
 
 Under each row, and on each board card: where it is and how long its agent has been as it is
 (`Acme › api · working 14m`). Where is the task's folder, else the one its terminal is in now,
 else that folder (`General › ~` for a project's own space). An agent's question takes that line
-when it needs you. A task in progress that hasn't moved for days (no change, no agent at work) shows its time in
-yellow (`in progress 5d`). Its model, effort and context are in the terminal's header and the detail.
+when it needs you. A task in progress with no agent open says so (`no agent open · in progress 2h`).
+Its model, effort and context are in the terminal's header and the detail.
 
-Which stage when: **Inbox** not decided, **Next** you'll do it, **In progress** under way (it counts
-for your limit; `doing` in the file: "in progress" isn't "being done right now", that's *Working*), **Review** ready to check, **Done** closed, or **Dropped** (✗) if you won't do it.
+Which stage when: **Inbox** not decided, **Next** you'll do it, **In progress** under way (`doing` in
+the file: "in progress" isn't "being done right now", that's *Working*), **Review** ready to check,
+**Done** closed, or **Dropped** (✗) if you won't do it.
 Rows that are closed or parked are dimmed, unless their agent works or asks for you.
 
-**What goes first is where you put it.** Drag a task onto another in a section of Now, the Inbox or a
-project in Projects, and it takes that place (a line shows where it lands); drag an idea from the
-Inbox onto Next and it's decided. `t`, or *Move to the top* in its menu, puts it first. New tasks go last.
+**What goes first is where you put it.** Drag a task onto another in a section of Now or a project
+in Projects, and it takes that place (a line shows where it lands). `t`, or *Move to the top* in its menu, puts it first. New tasks go last.
 
 **Park it** without changing its stage: right-click → *Later…* (`z`, or the detail) for tomorrow,
 next week, *someday* or *until its agent works* at a click, or a day you type (`fri`, `+3d`, `12-24`);
 or *Waiting on…* when it depends on someone, with who and a day to follow up (in three days unless
-you type another). A parked task leaves Now's lists and the in-progress count. On its day it comes back
+you type another). A parked task leaves Now's lists for its folded *Later*. On its day it comes back
 with a notification (from waiting, with *Follow up with Ana* as its next step if it had none). Once a
 day, a notification also tells you what's due or late (*Reminders* in the settings turns both off).
 
@@ -91,15 +92,14 @@ taskr makes a task *with no plan* in progress, named after what the agent calls 
 is the same thing with its plan filled in (next step, notes, due date…): *Plan it…* in the detail
 opens its form. Change anything on a no-plan task and it's yours from then on.
 
-A no-plan task lives with its agent: in progress while it's open (and counted for your limit), shown
-under Working or Finished as its agent is. Nothing
-else says when it's done, so when its agent quits (30 seconds after) or its tab closes (a minute
-after), it goes to Done (one in Review stays there), and *Resume agent* picks it up; a
-tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again takes the
-same task back up. With many agents open, *Park idle agents* in the settings (from an hour to a week;
+A task lives with its agent: in progress while it's open, shown under Working or Finished as its
+agent is. When its agent quits (30 seconds after) or its tab closes (a minute after), it goes to Done
+(one in Review stays there), planned or not, and *Resume agent* picks it up: a terminal alone isn't a
+task. A tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again
+takes the same task back up. A planned task you only opened a terminal for, with no agent ever,
+stays as it is. With many agents open, *Park idle agents* in the settings (from an hour to a week;
 off by default) parks any task whose agent has been idle that long, planned or not, until the agent works again.
-A planned task only goes Done by your hand. *Done today* in the status bar counts every task done,
-planned or not (not dropped ones). So you can work only with terminals and agents and still get the list, the board,
+*Done today* in the status bar counts the tasks you marked done, planned or not (not dropped ones, nor sessions that ended because their agent quit), and *turns today* the turns your agents finished. So you can work only with terminals and agents and still get the list, the board,
 Later, the reminders and the resume after a restart; and plan tasks with details (next step, notes,
 due date, issues, a worktree) when you want.
 
@@ -118,10 +118,9 @@ close all its spaces. An agent starts from a task (*Start agent*, or *Start with
 Done tasks are on the board; Projects shows open tasks, and a closed one only while its terminal is
 still open. A **paused**
 project waits folded under *Paused* at the end of Projects, and its tasks leave Now and the board of
-every project, but for an agent that needs you or is working; *Make active* brings it back. A project
-where nothing happens (no task changes, no agent works) pauses by itself after a day (*Pause quiet
-projects* in the settings: 1, 3, 7, 14 or 30 days, or never), and comes back by itself as soon as
-something does; one you pause stays paused. Work for the whole project
+every project, but for an agent that needs you or is working, and what you parked (it stays in
+Later); *Make active* brings it back. Only you pause a project (idle agents are parked one by one
+instead, with *Park idle agents*). Work for the whole project
 (its terminal, its agents, a task with a project but no folder) opens in the project's own space,
 named after it, in the nearest folder holding all its folders (`~/dev` for `~/dev/a` and
 `~/dev/b`; your home folder while it has none, or when they share nothing below it), and shows at the project's level, above its
@@ -147,7 +146,7 @@ model · effort · context, its folder and state; split, zoom and close while th
 Click it to select its task.
 
 **Board**: a kanban tab (`cmd-shift-b`, or the board button in the lists' header) with a column per stage: Inbox,
-Next, In progress (with your limit; parked cards are dimmed and don't count), Review and Done (last 7 days). Drag a card to another column to change its stage, or onto another card to put it there; click to open it,
+Next, In progress (parked cards dimmed, last), Review and Done (last 7 days). Drag a card to another column to change its stage, or onto another card to put it there; click to open it,
 right-click for its menu. Every board is a tab: **Board** for every project, and **Board · Acme** for
 each project, with only its tasks and agents. The pills at the top (All · Acme · …) go from one board
 to another, opening its tab the first time.
@@ -171,7 +170,7 @@ creates the branch `task/<name>` in `~/.herdr/worktrees/<repo>/<name>`, where He
 tools find it. It's offered only when the folder is a git repository.
 
 When an agent starts working, its task moves to **In progress** (from Inbox, Next or Done; one in Review
-stays there while the agent fixes what you found). Only you mark a planned task **Done**. **Delete** closes the task's tabs, and the agent in them, after the dialog says so. **Archive** puts its tabs away and can remove its
+stays there while the agent fixes what you found). It goes to **Done** when you mark it, or when its agent quits and leaves only a terminal. **Delete** closes the task's tabs, and the agent in them, after the dialog says so. **Archive** puts its tabs away and can remove its
 worktree (a branch with unmerged commits is kept).
 
 **Resume agent**: taskr remembers the Claude Code or Codex conversation each task's agent was in.
@@ -179,9 +178,10 @@ After a restart, or once you closed its tab, *Resume agent* (or `r`) runs `claud
 `codex resume <id>` in its folder, tied to the task again.
 
 **Stats** (the chart button in the lists' header, *Stats* in a project's menu, or `taskr.stats`): a tab with today
-or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks done; *Worked
+or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks you marked done (not sessions that ended by themselves); *Worked
 on*, the tasks whose agents worked (planned or not, every task counts alike); *Turns*, how many times an agent finished its turn; *Agent time*, how long they worked. A
-chart per day for agent time and one for done tasks, and a table by project. Done tasks count
+chart per day for agent time, one for turns and one for done tasks, and a table by project (*Shown in
+Stats* in the settings hides Done or Turns: its number, chart and column). Done tasks count
 backwards from their history; agent time and turns are kept per day from 1.7 on (`work` on each task,
 the last 120 days).
 
@@ -236,10 +236,9 @@ Your other layouts are untouched; switch back the same way.
    *Ready for review* (*Show changes* is in the detail), then `space` to mark it done.
 
 Settings (the gear in the status bar): Now and Projects as tabs or **stacked** (both at once, one
-above the other, as Herdr's spaces and agents), how many tasks can be in progress before the status bar
-warns you, after how many days a task in progress shows its time in yellow, which agent *Start agent* runs, whether tasks whose agent stays idle get parked (*Park idle agents*), after how long a quiet project pauses by itself, whether
+above the other, as Herdr's spaces and agents), which agent *Start agent* runs, whether tasks whose agent stays idle get parked (*Park idle agents*), whether
 the detail lists every change of stage (*Activity*, off by default), what the status bar shows (done
-today, in progress, working, open tasks) and whether it shows plan usage, in groups. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
+today, working, open tasks) and whether it shows plan usage, in groups. Stacked, `tab` moves the keys between the two lists; the chevron by a list's name folds
 it to its header (the other takes the room), and a double click on the name gives it all the room. Stacked, find a task, the board and Stats
 are in Projects' header (Now keeps its +); as tabs, in either.
 
@@ -285,7 +284,7 @@ file it can't read (it shows what's wrong instead). It never goes in this reposi
 
 ```jsonc
 {
-  "settings": { "wip": 3, "stale_days": 3, "agent": "claude", "usage": false, "reminders": true, "activity": false, "park_after": 0, "pause_after": 1 },  // agent: a key from Herdr's agent menu; park_after: minutes a task's agent stays idle before it's parked (0: never); pause_after: quiet days before a project pauses (0: never)
+  "settings": { "agent": "claude", "usage": false, "reminders": true, "activity": false, "park_after": 0 },  // agent: a key from Herdr's agent menu; park_after: minutes a task's agent stays idle before it's parked (0: never)
   "projects": [{ "id": "p1", "name": "Acme", "folders": ["~/dev/acme"], "paused": false }],
   "tasks": [{
     "id": "t1", "title": "Add OAuth login", "project": "p1", "folder": "~/dev/acme",
@@ -307,7 +306,7 @@ file it can't read (it shows what's wrong instead). It never goes in this reposi
 }
 ```
 
-Only `id` and `title` are needed for a new task; everything else gets a default. Old files are still read: `repos` and `repo` as `folders` and `folder`, `deleted: true` tasks are dropped, and from before 1.7, status `dropped` as Done with `outcome: "dropped"`, status `waiting` as Doing parked waiting on someone (back three days after it began waiting), a no-plan task that was Idle as parked until its agent works, and `review_after` as `park_after`. A task's tabs are
+Only `id` and `title` are needed for a new task; everything else gets a default. Old files are still read: `repos` and `repo` as `folders` and `folder`, `deleted: true` tasks are dropped, and from before 1.7, status `dropped` as Done with `outcome: "dropped"`, status `waiting` as Doing parked waiting on someone (back three days after it began waiting), a no-plan task that was Idle as parked until its agent works, and `review_after` as `park_after`; from before 1.7.9, `wip`, `stale_days` and `pause_after` are dropped and a project taskr paused by itself stays paused, as one you paused. A task's tabs are
 also labelled on their terminals (`taskr.task=<id>`, see `hc ls`; old `tasker.*` labels are still read), so a task finds its agents again
 even if the file loses them. Agents that should add or move tasks: see **[docs/agents.md](docs/agents.md)**.
 

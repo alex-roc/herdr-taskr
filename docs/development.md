@@ -120,6 +120,9 @@ state has no app or status in `herdr-app ls`, and a plain terminal would show un
   and revive types agents back one at a time. After a minute silent (`Titles.silent`, `unreported`
   in `lib/world.js`) its row says so and the detail offers Restart (`restart` in `lib/revive.js`:
   `/exit`, wait for the shell, resume).
+- The `status_ms` Herdr hands mods in `terminals()` can be stale, days old, while `hc get` has the
+  current one: seen on a Claude Code that went silent (see above) and reported again after a restart.
+  `sinceOf` (`main.js`) takes the later of it and taskr's own sighting of the change (`since`).
 - To try a restart on one agent: `herdr-app do terminal.open` with `claude --model haiku "…"` in a
   scratch folder, wait for `terminals.json` to list it, then `kill -9` its pid (or its shell's).
 - The window draws nothing while it's hidden or the screen sleeps, and mods run only when it draws:

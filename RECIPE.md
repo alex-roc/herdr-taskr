@@ -17,14 +17,16 @@ every task by stage.
     board of every project (in Projects, each project's row has its own); search "Find a task"; (Now
     only) plus "New task" (in Projects, tasks are made from a project's or a folder's own plus).
   - **Now**: collapsible sections, header 11px medium in the section's color plus a count and a
-    chevron, each task in one (`nowSection` in `lib/flow.js`): what the agents ask of you, then the
-    stages, then what's parked. Needs you (`blocked`: its agent asks), Finished (`done`: its agent
-    finished its turn, unseen ones first and in bold, then the Idle ones it waits on you; only until
+    chevron, each task in one (`nowSection` in `lib/flow.js`): what the agents ask of you, then
+    what's yours to do, then what's parked. Needs you (`blocked`: its agent asks), Finished (`done`: its agent
+    finished its turn, a queue with the last turn on top (unseen ones in bold, Idle once seen; seeing one
+    doesn't move it); only until
     you decide: its stage changed after the turn ended, its last `history` entry later than when its
-    agent last stopped (`since`, done and idle as one), puts it in that stage's section), Working
-    (`working`), To review (`done`), In progress (`working`: stage `doing` with no agent working or
-    waiting for you), Next (foreground, first 7, then "N more" which opens Projects), Inbox (`dim`,
-    first 5). Last, **Later** (`dim`, folded until opened): parked tasks, soonest back first, then
+    agent last ended a turn (`turn_at` on the task: working, then finished or idle; an agent that
+    opens idle, after a restart, ends none), puts it in that stage's section), Working
+    (`working`), Next (foreground: stages `next`, `doing` and `review` with no agent working or
+    waiting for you; first 10, then "N more" which opens Projects). The Inbox isn't in Now: it waits
+    in Projects and on the board. Last, **Later** (`dim`, folded until opened): parked tasks, soonest back first, then
     *until its agent works*, then *someday*.
     Empty: "Nothing needs you. Press n for a new task, or open Projects to see your folders."
   - **Projects**: a project row (`layers` icon 13px, `dim` when paused; name 12px semibold, count of tasks and
@@ -45,10 +47,9 @@ every task by stage.
     row becomes a drag only once the pointer moves 4px within 1.5 s; leaving the list ends a drag. Dragging a project row onto another moves it
     there (dimmed while dragged; a 2px `accent` line above or below the target shows where it lands);
     the order is `projects` in tasks.json. Paused projects (`paused: true`) come last, under a
-    **Paused** section header (`dim`, folded until opened, as Later). A project pauses by itself after
-    `pause_after` days (setting; 1 by default, 3, 7, 14, 30, 0 for never) with no task changed and no
-    agent working or asking (`paused_auto` marks it; `active_at` is when it was made or made active), and
-    comes back by itself at the next sign of life; a pause of the person's stays. No project colors: a `color`
+    **Paused** section header (`dim`, folded until opened, as Later). Only the person pauses a project
+    (before 1.7.9 one paused itself when quiet, `paused_auto`: dropped, the project stays paused); its tasks leave Now
+    but for an agent working or asking and the parked ones, which stay in Later. No project colors: a `color`
     from before stays in the file, unused.
   - **Stacked** (`taskr-split`, Projects over Now, each block `min` 41): each list's header has a
     chevron by its name; folding sets its block to `px: 41` (its header) and the other to `weight: 1`,
@@ -68,9 +69,8 @@ every task by stage.
     you haven't seen it), due chip ("2d late" on `blocked`, today/tomorrow on `ansi3`, else `dim`).
     A second 11px line: the agent's question in `blocked`, else where it is and its agent's time
     ("Acme › app · working 4m", "finished 3m ago", "idle 1h", "needs you 2m"), else "Later · back fri",
-    "Waiting on Ana · fri" or "Later · until its agent works" for a parked task, else "→ next step"; a
-    task in progress that hasn't moved for `stale_days` (no change, no agent at work) shows "in
-    progress 5d" and the line in `ansi3`. The title is `dim` when the task is aside (`aside()` in
+    "Waiting on Ana · fri" or "Later · until its agent works" for a parked task, else "no agent open ·
+    in progress 2h" for one in progress with no agent, else "→ next step". The title is `dim` when the task is aside (`aside()` in
     `lib/util.js`: closed or parked), unless its agent works or asks;
     the board dims the same cards (title `dim`, card at 0.6 but in Done). Hover shows a play
     button on tasks without an agent. Selected row on `selected`.
@@ -106,8 +106,8 @@ every task by stage.
   goes to that board's tab, made when not open (tabs are found by name); an open one is focused instead of
   making another): header 44px on `canvas` with "Board", project pills (All + each project, `layers`
   icon) and a hint; five columns, one per stage, that share the width (min 170, max 320px) on
-  `chrome`, radius 10, header 38px (stage icon, name, count; In progress shows n/limit, parked cards
-  not counted, in `ansi3` when over; + on Inbox and Next); cards on `background`, radius 9, border
+  `chrome`, radius 10, header 38px (stage icon, name, count; parked cards last in their column; + on Inbox
+  and Next); cards on `background`, radius 9, border
   `blocked` when the agent needs you, `accent` when selected: mark + title, next step, the question or
   "Acme › app · working 4m" (where, as in Now; a project's board leaves the project out), chips (due,
   parked, #issue, branch). Parked cards are at 0.6. Dropped tasks aren't on the board. Empty column: a
@@ -120,16 +120,19 @@ every task by stage.
   through `shared("taskr.statsPick")`): header 44px on `canvas` with "Stats", period pills Today / 7
   days / 30 days / 90 days (remembered per copy) and project pills (All + each active project);
   four tiles on `chrome` (Done: tasks done, planned or not, not dropped; Worked on: tasks
-  whose agents worked; Turns; Agent time); with more than a day, two bar charts,
-  one measure each (agent time per day in `working`, done per day in `done`): bars 2px apart, max
+  whose agents worked; Turns; Agent time); with more than a day, a bar chart per
+  measure (agent time per day in `working`, turns per day in `accent`, done per day in `done`); the
+  setting `stats` (`done`, `turns`, each true unless false) hides Done or Turns: tile, chart, column; bars 2px apart, max
   28px wide, rounded tops, the tallest 72px, an empty day a 1px `border` line, a tooltip per bar
   ("11/14: 2h 5m"), first and last day under them; with All, a table by project (Done, Worked on,
   Turns, Agent time; by agent time). Work per day lives on each task, `work: { day: [ms, turns] }`
   (last 120 days, `lib/stats.js`): the books split agent time at midnights and count a turn when a
   working agent finishes or rests. When the period reaches before the first day kept, a dim line says
   since when.
-- **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0; any task, planned or not, but dropped ones), "In
-  progress n/limit" (parked tasks don't count; `ansi3` and "finish something first" when over), "! N need(s) you" (click: Now), "N working" (both count open tasks, as Now's sections do); on the right plan usage
+- **Status bar, 28px**: "✓ N done today" (`ansi2` when > 0; tasks marked done, planned or not, but dropped ones and those
+  closed because their agent quit, `freed`), "↺ N turns today" (`muted`; the turns of every task's
+  agents today, from `work`),
+  "! N need(s) you" (click: Now), "N working" (open tasks, as Now's Working); on the right plan usage
   "Claude 28% wk 34%" and "Codex 8% wk 12%" (`muted`, `ansi3` from 70%, `blocked` from 90%, by the
   fuller limit; tooltip with reset times; click looks again; "Claude !" with the reason on error),
   "N open", a `panel-right` button that shows or hides the detail (`foreground` when shown) and a
@@ -160,7 +163,7 @@ every task by stage.
   nothing. Review is the person's (*Ready for review*) or an agent's (writing the file); a pull
   request opened since the task went in progress moves it to review, only for a task with its own
   worktree branch (looked for every 3 min with the window in front; nothing else asks `gh` in the
-  background). Nothing becomes done by itself but a task with no plan whose agent quit. Agent working
+  background). Nothing becomes done by itself but a task whose agent quit, leaving only a terminal. Agent working
   time adds up per task. The list copies do this bookkeeping, their state shared (`globalThis`) so two
   lists on screen record each change once.
 - A task with no plan (`auto: true`, see Terminal tasks below) is made in progress (`adoptStage`) and
@@ -168,9 +171,12 @@ every task by stage.
   quits (30 s) or its tab is gone (1 min) it goes to done (`quitStage`: one in review stays), with
   `freed: true`: it lets go of its tabs (`released` in `lib/world.js`: not in `taskOfTab`, no agents,
   `live` empty), so a tab left open shows as a terminal row, and `adopt` takes the same task back up
-  when an agent starts there again. With `park_after` (minutes: 60, 240, 1440; 0, never, by default)
+  when an agent starts there again. A planned task goes the same way once it has had an agent (one
+  seen in its tabs, or a conversation kept with a tab still open): a terminal alone isn't a task. One
+  you only opened a terminal for, with no agent ever, stays. With `park_after` (minutes: 60, 120, 240,
+  480, 1440, 2880, 4320, 10080; 0, never, by default)
   any task whose agent has been idle that long, planned or not, is parked until it works (`parkDue`).
-  "Done today" counts every task done but dropped ones.
+  "Done today" counts the tasks marked done, not dropped ones nor those closed by their agent quitting.
 - Parked: on its day it comes back (snooze cleared) with a notification; back from waiting on
   someone with "Follow up with Ana" as its next step when it had none. `agent` comes back when its
   agent works or asks. In progress and done clear it.
@@ -222,10 +228,8 @@ every task by stage.
   understood), estimate, next step, notes. Enter saves once.
 - Settings, in groups, each under a title (10.5px semibold `dim`, uppercase, a line below):
   **Now and lists**: Now and Projects (Tabs / Stacked, when the layout has `taskr-lists`), Park idle
-  agents (never, 1 h, 2 h, 4 h, 8 h, 1 day, 2 days, 3 days, 1 week; `park_after`), Pause quiet
-  projects (never, 12 h, 1, 2, 3, 7, 14, 30 days; `pause_after`). **Limits**: steppers for the
-  In-progress limit (1–20, `wip`) and Days without movement (1–60, `stale_days`). **Status bar**:
-  what it shows (Done today, In progress, Working, Open tasks; `bar`, each a toggle; the tasks that
+  agents (never, 1 h, 2 h, 4 h, 8 h, 1 day, 2 days, 3 days, 1 week; `park_after`). **Status bar**:
+  what it shows (Done today, Turns today, Working, Open tasks; `bar`, each a toggle; the tasks that
   need you always) and Plan usage (off by default). **Notifications and details**: Reminders,
   Activity in the details (off by default). **Agents**: Agents after a restart, and the installed
   agents as pills (the chosen one stays even if not installed).
@@ -256,7 +260,9 @@ every task by stage.
   from its title as the core has it (`hc get`: Herdr strips the mark for mods), every 3 s with the
   window in front, a change redrawing every copy: ◐◓◑◒ or braille first is working, ✳ idle (`done`
   when it stopped with its terminal not in front of you, until you look), else `unknown` ("running
-  4m"). A Claude Code that isn't `claude attach` and reports nothing (`unreported`: it missed the
+  4m"). Its clock (how long it's been as it is, and what Park idle agents counts from) starts when
+  taskr sees its title's state change (`Titles.changedAt`), not at the core's `status_ms`, which is
+  from its last report. A Claude Code that isn't `claude attach` and reports nothing (`unreported`: it missed the
   terminal's answer about reports as it started) for over a minute adds "not reporting" to its row,
   and its agent card in the detail a Restart button once stopped (`restart` in `lib/revive.js`). Its session comes from `~/.claude/projects/<folder>/<attach id>*.jsonl`.
 - Import issues: GitHub (`gh issue list`) or Linear (GraphQL `viewer.assignedIssues`, not completed or
@@ -288,7 +294,7 @@ notifications ask for it). With two lists on screen, Now acts on them and sets a
   `shared("taskr.pending")` (launches waiting for their tab); caches on `globalThis` (agent info,
   repository state, since-when) so every copy looks once.
 - `spaces()`, `panes()`, `agents()`, `terminals()` joined per render; `setAgentOrder` follows the
-  list. Since when: `status_ms`, else the tab's `working_since` / `changed_at`, else taskr's stamp.
+  list. Since when: the later of `status_ms` (else the tab's `working_since` / `changed_at`) and taskr's own stamp of the change, since the stamp Herdr hands mods can be days old.
 - `layout()` tells whether `taskr-detail` is on screen (a stack shows only its `active` child): the
   detail reads `hc read`, `git diff` and `gh pr view` only then, every 15 s with the window in front
   (PR every 60 s), and redraws only when what it read changed; it skips `hc read` while the agent's

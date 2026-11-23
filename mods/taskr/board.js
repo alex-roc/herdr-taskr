@@ -129,12 +129,9 @@ export const Board = {
         .when(Boolean(task.branch), (el) => el.child(h_flex().gap(3).items_center().text_size(10).text_color(t.dim).child(icon("git-branch", 11)).child(task.branch.replace(/^task\//, ""))))));
   },
 
-  column(t, status, list, wip) {
+  column(t, status, list) {
     const ids = list.map((x) => x.t.id);
     const over = this.pressed && this.over === status;
-    // The limit counts work in progress: parked tasks are out of it.
-    const inProgress = status === "doing" ? list.filter((x) => !isLater(x.t)).length : list.length;
-    const full = status === "doing" && inProgress > wip;
     return v_flex().id(`col-${status}`).flex_1().min_w(170).max_w(320).h_full().min_h(0).rounded(10)
       .bg(over ? t.selected : t.chrome).border_1().border_color(over ? t.accent : t.border)
       .on_mouse_move((_e, cx) => { if (this.pressed && (this.over !== status || this.overCard)) { this.over = status; this.overCard = null; cx.notify(); } })
@@ -142,7 +139,7 @@ export const Board = {
       .child(h_flex().px(12).h(38).flex_none().gap(7).items_center()
         .child(statusIcon(t, status, 14))
         .child(div().font_semibold().text_size(12.5).child(S.statusLabel[status]))
-        .child(div().text_size(11.5).text_color(full ? t.ansi3 : t.dim).child(status === "doing" ? `${inProgress}/${wip}` : String(list.length)))
+        .child(div().text_size(11.5).text_color(t.dim).child(String(list.length)))
         .child(div().flex_1())
         .when(["inbox", "next"].includes(status), (el) => el.child(iconButton(t, `col-add-${status}`, "plus", S.newTask,
           () => openDialog("task", { status, project: this.boardProject })))))
@@ -158,7 +155,6 @@ export const Board = {
     // The project went (deleted): its board shows every project.
     this.boardProject = own ? own.id : this.fixedProject && !this.store.loaded ? this.fixedProject : null;
     const cols = this.boardColumns(this.world);
-    const wip = this.store.data.settings.wip;
     // A pill per board: this one lit, the others go to their tab (made when not open).
     const pill = (id, label) => {
       const here = this.boardProject === id;
@@ -180,6 +176,6 @@ export const Board = {
           .children(this.store.data.projects.filter((p) => !p.paused || p.id === this.boardProject).map((p) => pill(p.id, p.name))))
         .child(div().flex_none().pl(8).text_size(11).text_color(t.dim).child(S.boardHint)))
       .child(h_flex().id("board-cols").flex_1().min_h(0).px(14).pb(14).gap(10).items_start().overflow_x_scrollbar()
-        .children(COLUMNS.map((c) => this.column(t, c, cols[c], wip))));
+        .children(COLUMNS.map((c) => this.column(t, c, cols[c]))));
   },
 };
