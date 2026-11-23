@@ -14,6 +14,10 @@
 //   status reports, and then report no state at all: they're typed back one at a time.
 // - Shutting down quits the agents before their shells, and a shell left alone for a few seconds
 //   looked like an agent quit by hand: its conversation was forgotten. Only minutes alone count.
+// - A pid alone doesn't say it's the same shell: a Mac starting brings its terminals back in the
+//   same order, and a shell can get the very pid it had before the restart. Taken for the old
+//   shell, its agent counted as quit by hand and never came back. A record from before the Mac
+//   started (`boot`, from `kern.boottime`) is never this shell, whatever its pid.
 
 import { readTextFile, writeTextFile, exec, notify } from "herdr";
 import { DIR } from "./store.js";
@@ -74,7 +78,7 @@ export class Revive {
       const t = live.get(addr);
       if (!t) continue; // gone for now (a core still starting): kept
       if (enabled && now - (c.typed[addr] ?? 0) < COMING_MS && !agentInFront(t)) coming.add(r.tab);
-      if (t.pid === r.pid) {
+      if (t.pid === r.pid && !(c.boot && (r.at ?? 0) < c.boot)) {
         // The same shell, itself in front for a while: the agent was quit by hand, so it isn't
         // one to bring back. (Right after a crash the old pid lingers with nothing in front.)
         if (shellOnly(t)) {
@@ -86,7 +90,7 @@ export class Revive {
       // The address went to a terminal in another tab: not this one.
       if ((t.labels?.["herdr.tab"] ?? null) !== r.tab) { delete c.recs[addr]; dirty = true; continue; }
       // Its agent is back already (resumed some other way): nothing to type.
-      if (agentInFront(t)) { r.pid = t.pid; delete r.quit; delete r.settling; dirty = true; continue; }
+      if (agentInFront(t)) { r.pid = t.pid; r.at = now; delete r.quit; delete r.settling; dirty = true; continue; }
       if (enabled) coming.add(r.tab);
       // A new shell: typed into once it has been in front, settled, a moment (see above).
       if (!shellOnly(t)) continue;
@@ -95,7 +99,8 @@ export class Revive {
       // One at a time, a moment apart: a dozen agents starting at once can miss the terminal's answer
       // to their question about status reports, and then report nothing for the whole session.
       if (enabled && (back.length || now < (c.nextAt ?? 0))) { later = true; continue; }
-      r.pid = t.pid; // typed once for this shell: never twice
+      r.pid = t.pid; // typed once for this shell: never twice (`at`: since this Mac started)
+      r.at = now;
       delete r.quit;
       delete r.settling;
       dirty = true;
@@ -147,6 +152,8 @@ export class Revive {
     cx.spawn(async () => {
       let text = null;
       try { text = await readTextFile(FILE()); } catch {}
+      // When this Mac started: `{ sec = 1795434657, usec = 975012 } Mon Nov 23 07:50:57 2026`.
+      try { const m = /sec = (\d+)/.exec((await exec("sysctl", ["-n", "kern.boottime"]))?.stdout ?? ""); if (m) c.boot = Number(m[1]) * 1000; } catch {}
       let recs = {};
       try { const d = JSON.parse(text ?? "{}"); if (d && typeof d === "object" && !Array.isArray(d)) recs = d; } catch {}
       c.recs = recs;

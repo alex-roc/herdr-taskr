@@ -1177,11 +1177,26 @@ test("agents back after a restart: a terminal back as a fresh shell gets its con
   await settle();
   assert.equal(sent.length, 3, "then the other");
   delete r.c.recs.t7;
+  // After the Mac restarts, a new shell can get the old one's pid: a record from before it started
+  // is never this shell, so its conversation is typed back (not taken as quit by hand).
+  r.c.boot = Date.now() - 60000;
+  r.c.recs.t5 = { pid: 50, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: r.c.boot - 3600000 };
+  r.c.nextAt = 0;
+  r.step(c, [term(50, 50, false)], info);
+  r.c.recs.t5.settling.at -= 4000;
+  r.step(c, [term(50, 50, false)], info);
+  await settle();
+  assert.equal(sent.length, 4, "same pid as before the restart: typed back");
+  r.c.nextAt = 0;
+  r.step(c, [term(50, 50, false)], info);
+  await settle();
+  assert.equal(sent.length, 4, "once");
+  delete r.c.boot;
   // An address reused by a terminal in another tab gets nothing.
   r.c.recs.t5 = { pid: 30, tab: "tbR", app: "claude", id: "sess-1", cwd: "/x", at: Date.now() };
   r.step(c, [term(40, 40, false, "tbOther")], info);
   await settle();
-  assert.equal(sent.length, 3);
+  assert.equal(sent.length, 4);
   assert.ok(!r.c.recs.t5);
   H.exec = realExec;
 });

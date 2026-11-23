@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.10 — 2026-11-23
+
+### Fixed
+- **An agent comes back after a restart even when its terminal gets the same pid.** A Mac starting
+  brings its terminals back in the same order, so a shell can get the very pid it had before: taskr
+  took it for the old shell, counted its agent as quit by hand and never typed its `--resume` (and,
+  with no agent, its task was closed). A record from before the Mac started is now never the same
+  shell, whatever its pid.
+
 ## 1.7.9 — 2026-11-23
 
 ### Changed
