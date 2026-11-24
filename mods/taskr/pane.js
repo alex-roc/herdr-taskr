@@ -5,10 +5,12 @@
 
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { theme, run, panes, terminals, props, home, setShared } from "herdr";
+import { theme, run, panes, terminals, props, home, setShared, focused, nextCommand } from "herdr";
 import { S } from "./strings.js";
 import { shortModel, kilo, tilde, label } from "./lib/util.js";
-import { icon, agentMark, programIcon } from "./lib/ui.js";
+import { icon, agentMark, programIcon, shownLists } from "./lib/ui.js";
+import { claim } from "./lib/cache.js";
+import { closeGuarded } from "./lib/actions.js";
 
 // The task a terminal is in: the label taskr puts on the terminals it opens, else its tab.
 export function taskOfPane(data, p, term) {
@@ -20,12 +22,22 @@ export function taskOfPane(data, p, term) {
 export const Pane = {
   initPane(cx) {
     this.hovered = false;
+    // cmd-w and cmd-shift-w go to the lists; with none on screen, to the focused pane's header.
+    cx.spawn(async () => {
+      for (;;) {
+        let c = null;
+        try { c = await nextCommand(); } catch {}
+        if (c == null) return;
+        if (!["close", "closePane"].includes(c) || shownLists().length || focused()?.pane !== props()?.pane) continue;
+        if (claim(c)) closeGuarded(c === "close" ? "tab" : "pane");
+      }
+    });
   },
 
-  paneButton(t, id, iconName, tooltip, command, args) {
+  paneButton(t, id, iconName, tooltip, onClick) {
     return div().id(id).p(3).rounded(4).text_color(t.dim).tooltip(tooltip)
       .hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .on_click((_e, cx) => { cx.stop_propagation(); run(command, args); })
+      .on_click((_e, cx) => { cx.stop_propagation(); onClick(); })
       .child(icon(iconName, 13));
   },
 
@@ -54,9 +66,10 @@ export const Pane = {
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(p.cwd ? tilde(p.cwd, home()) : ""))
       .when(Boolean(mark), (el) => el.child(mark))
       .when(this.hovered, (el) => el
-        .child(this.paneButton(t, `ph-r-${pane}`, "columns-2", S.paneSplitRight, "pane.split", { direction: "right", pane }))
-        .child(this.paneButton(t, `ph-d-${pane}`, "rows-2", S.paneSplitDown, "pane.split", { direction: "down", pane }))
-        .child(this.paneButton(t, `ph-z-${pane}`, p.zoomed ? "minimize-2" : "maximize-2", p.zoomed ? S.paneUnzoom : S.paneZoom, "pane.zoom", { pane }))
-        .child(this.paneButton(t, `ph-x-${pane}`, "x", S.paneClose, "pane.close", { pane })));
+        .child(this.paneButton(t, `ph-r-${pane}`, "columns-2", S.paneSplitRight, () => run("pane.split", { direction: "right", pane })))
+        .child(this.paneButton(t, `ph-d-${pane}`, "rows-2", S.paneSplitDown, () => run("pane.split", { direction: "down", pane })))
+        .child(this.paneButton(t, `ph-z-${pane}`, p.zoomed ? "minimize-2" : "maximize-2", p.zoomed ? S.paneUnzoom : S.paneZoom, () => run("pane.zoom", { pane })))
+        // Not an agent's: it quits from inside (lib/actions.js closeGuarded).
+        .child(this.paneButton(t, `ph-x-${pane}`, "x", S.paneClose, () => closeGuarded("pane", pane))));
   },
 };

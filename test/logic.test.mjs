@@ -1649,3 +1649,126 @@ test("the books keep each task's agent work per day and count a turn when a work
   await tick(v);
   assert.equal(v.store.task("doing1").work[localDay(Date.now())][1], 1);
 });
+
+test("ranSince: an agent worked on it since you last chose its stage (kept in the file, so it outlives a restart)", async () => {
+  const { ranSince } = await import("../mods/taskr/lib/flow.js");
+  assert.equal(ranSince({ history: [{ s: "doing", at: 100 }] }), false, "no agent ever");
+  assert.equal(ranSince({ history: [{ s: "doing", at: 100 }], sessions: [{ id: "a", at: 101 }] }), true, "a conversation after");
+  assert.equal(ranSince({ history: [{ s: "doing", at: 100 }], sessions: [{ id: "a", at: 50 }], turn_at: 120 }), true, "a turn ended after");
+  assert.equal(ranSince({ history: [{ s: "doing", at: 200 }], sessions: [{ id: "a", at: 50 }], turn_at: 120 }), false, "moved by hand since");
+});
+
+test("a planned task whose agent went while taskr wasn't looking (its tab gone, no shell left) closes after a restart; one you moved since doesn't", async () => {
+  const now = Date.now();
+  const v = await sidebar({ tasks: [
+    task({ id: "lost1", title: "Its tab closed", status: "doing", tabs: ["tbGone"], history: [{ s: "doing", at: now - 3 * DAY }], sessions: [{ app: "claude", id: "sa", cwd: "~/dev/app", at: now - 3 * DAY + 1000 }], turn_at: now - 2 * DAY }),
+    task({ id: "mine1", title: "Back in progress by hand", status: "doing", tabs: ["tbGone2"], history: [{ s: "doing", at: now - DAY }], sessions: [{ app: "claude", id: "sb", cwd: "~/dev/app", at: now - 3 * DAY }] }),
+    task({ id: "someday1", title: "Parked by hand", status: "doing", tabs: ["tbGone3"], snooze: "someday", history: [{ s: "doing", at: now - 3 * DAY }], sessions: [{ app: "claude", id: "sc", cwd: "~/dev/app", at: now - 2 * DAY }] }) ] });
+  await tick(v);
+  const gone = globalThis.__taskr.books.info.gone;
+  assert.ok(gone.lost1, "counted down");
+  assert.ok(!gone.mine1, "you chose its stage after its agent: not counted");
+  assert.ok(!gone.someday1, "you parked it: not counted");
+  gone.lost1 -= 61000;
+  await tick(v);
+  assert.equal(v.store.task("lost1").status, "done");
+  assert.equal(v.store.task("lost1").freed, true);
+  assert.equal(v.store.task("mine1").status, "doing");
+});
+
+test("an agent with no plan in another task's conversation goes back to that task, reopened", async () => {
+  const v = await sidebar({ tasks: [task({ id: "plan1", title: "Tune it", status: "done", tabs: ["tbOld"], freed: true, sessions: [{ app: "claude", id: "s9", cwd: "~/dev/app", at: 1 }] })] });
+  const auto = v.store.data.tasks.find((t) => t.auto && t.tabs.includes("tb4"));
+  assert.ok(auto, "tb4's agent got a task with no plan first");
+  // Its conversation turns out to be plan1's (resumed by hand, or brought back after a restart).
+  const get = v.info.get.bind(v.info);
+  v.info.get = (a) => (a === "t4" ? { app: "claude", session: "s9", model: "claude-opus-5-5" } : get(a));
+  await tick(v);
+  await tick(v);
+  assert.equal(v.store.task(auto.id), null, "the task with no plan is gone");
+  const t = v.store.task("plan1");
+  assert.ok(t.tabs.includes("tb4"));
+  assert.equal(t.status, "doing", "under way again");
+  assert.equal(t.freed, undefined);
+  assert.ok(H.hcLog.some((a) => a[0] === "label" && a[1] === "t4" && a[2] === "taskr.task=plan1"));
+  assert.equal(v.world.taskOfTab.get("tb4")?.t.id, "plan1");
+  // Not when that task's conversation already runs in another tab of its own.
+  const v2 = await sidebar({ tasks: [task({ id: "busy1", title: "Busy", status: "doing", tabs: ["tb1"], sessions: [{ app: "claude", id: "s9", cwd: "~/dev/app", at: 1 }] })] });
+  const auto2 = v2.store.data.tasks.find((x) => x.auto && x.tabs.includes("tb4"));
+  v2.info.get = (a) => (a === "t4" ? { app: "claude", session: "s9" } : null);
+  await tick(v2);
+  await tick(v2);
+  assert.ok(v2.store.task(auto2.id), "kept apart");
+});
+
+test("adopting waits for a tab's terminals, and a tab labelled with a task goes to that task", async () => {
+  const { adopt } = await import("../mods/taskr/lib/actions.js");
+  // Herdr starting: the pane still shows its agent, the core hasn't listed the terminal yet.
+  world();
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  H.terminals = H.terminals.filter((t) => t !== t4);
+  H.agents = H.agents.filter((a) => a.address !== "t4");
+  H.props = { role: "sidebar" };
+  const v = new Taskr();
+  v.init(H.props, cx());
+  await until(() => v.store.loaded);
+  await tick(v);
+  await tick(v);
+  assert.ok(v.world.untracked.some((u) => u.tab === "tb4" && u.agents.length), "seen as an agent's tab");
+  assert.ok(!v.store.data.tasks.some((t) => t.tabs.includes("tb4")), "but not taken before its terminal is known");
+  // The look that found it untracked came before its label: adopt reads the label again.
+  const u = v.world.untracked.find((x) => x.tab === "tb4");
+  H.terminals.push({ ...t4, labels: { ...t4.labels, "taskr.task": "next1" } });
+  assert.equal(await adopt(v.store, u), "next1");
+  assert.ok(v.store.task("next1").tabs.includes("tb4"));
+  assert.ok(!v.store.data.tasks.some((t) => t.auto && t.tabs.includes("tb4")));
+});
+
+test("a tab known only by its terminal's label is kept in the store too", async () => {
+  const v = await sidebar();
+  // t1 carries doing1's label (tasker.task), and doing1 lists no tab.
+  await tick(v);
+  assert.deepEqual(v.store.task("doing1").tabs, ["tb1"]);
+});
+
+test("parked until its agent works, and its agent quit: back for you to decide", async () => {
+  const v = await sidebar({ tasks: [task({ id: "nap1", title: "Style", status: "review", tabs: ["tb3"], auto: true, freed: true, snooze: "agent" })] });
+  await tick(v);
+  assert.equal(v.store.task("nap1").snooze, null);
+  assert.equal(v.store.task("nap1").status, "review");
+});
+
+test("cmd-w closes a tab, cmd-shift-w a pane, never one with an agent in front: a toast says how to quit it, or closes it anyway", async () => {
+  const { closeGuarded } = await import("../mods/taskr/lib/actions.js");
+  world();
+  // tb4: Claude Code in front. Not closed.
+  H.focused = { space: "sp1", tab: "tb4", pane: "p4", terminal: "t4" };
+  assert.equal(closeGuarded("tab"), false);
+  assert.ok(!H.runs.some(([n]) => n === "tab.close"));
+  const note = H.notes.at(-1);
+  assert.equal(note.level, "warning");
+  assert.deepEqual(note.action, { name: "tab.close", args: { id: "tb4", confirmed: true } });
+  assert.equal(closeGuarded("pane"), false);
+  assert.deepEqual(H.notes.at(-1).action, { name: "pane.close", args: { pane: "p4" } });
+  // tb3: a shell. Closed as Herdr would.
+  H.focused = { space: "sp1", tab: "tb3", pane: "p3", terminal: "t3" };
+  assert.equal(closeGuarded("tab"), true);
+  assert.deepEqual(H.runs.at(-1), ["tab.close", { id: "tb3" }]);
+  assert.equal(closeGuarded("pane"), true);
+  assert.deepEqual(H.runs.at(-1), ["pane.close", { pane: "p3" }]);
+  // An agent that quit, its shell back in front (Herdr may still name the agent): a shell.
+  const t4 = H.terminals.find((t) => t.address === "t4");
+  t4.pid = 4004;
+  t4.foreground = { pid: 4004, argv: ["/bin/zsh", "-l"], name: "zsh" };
+  t4.program = { agent: true };
+  H.panes.find((p) => p.pane === "p4").program = { agent: true };
+  assert.equal(closeGuarded("tab", "tb4"), true);
+  // From the keys: the list on screen acts, once.
+  H.runs.length = 0;
+  const v = await sidebar();
+  H.focused = { space: "sp1", tab: "tb3", pane: "p3", terminal: "t3" };
+  command("close");
+  await settle();
+  assert.deepEqual(H.runs.filter(([n]) => n === "tab.close"), [["tab.close", { id: "tb3" }]]);
+  assert.ok(v);
+});

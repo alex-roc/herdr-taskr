@@ -25,6 +25,16 @@ export const adoptStage = (had) => (had?.status === "review" ? "review" : "doing
 // so it is; one in Review waits for you.
 export const quitStage = (t) => (t?.status === "review" ? "review" : "done");
 
+// Whether an agent worked on a task since you last chose its stage: a conversation kept, or a
+// turn ended, after it. Kept in the file, so it outlives a restart: a task you gave details to whose
+// agent went while taskr wasn't looking (its tab closed, or taken by another task) is closed as one
+// seen going. One you moved by hand since (back to In progress, say) waits for you.
+export function ranSince(t) {
+  const chosen = t?.history?.at(-1)?.at ?? 0;
+  const ran = Math.max(t?.turn_at ?? 0, ...(t?.sessions ?? []).map((s) => s?.at ?? 0));
+  return ran > 0 && ran >= chosen;
+}
+
 // Where a task with no plan works: its agent's folder, wherever it goes (a `cd`, then another agent
 // started there), as the repository it's in (`repo`) or the folder itself (`here`). In the task's
 // project, its place is project-wide work: no folder. Moved by hand, a task isn't one with no plan

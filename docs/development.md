@@ -114,6 +114,15 @@ state has no app or status in `herdr-app ls`, and a plain terminal would show un
   agents before their shells: only a shell alone for minutes means an agent quit by hand. While
   revive brings an agent back (`revive.coming(tabs)`), `follow` doesn't count its task's agent as
   quit, or a task with no plan would be closed as Done and reopened at every restart.
+- While Herdr starts, `panes()` can show a tab's agent (its `app` and title from before) before
+  `terminals()` lists the terminal and its labels: the tab looks like an agent's with no task.
+  `follow` adopts only tabs whose terminals are known, `adopt` reads the label again, and the books
+  copy label-only tabs into the store. On 2026-11-24 a resumed conversation tied by label alone was
+  taken by a new task this way, and its own task sat in progress with no agent.
+- `tab.close` and `pane.close` end an agent with no question: the taskr layout binds `cmd-w` and
+  `cmd-shift-w` to `taskr.close`/`taskr.closePane` (`closeGuarded` in `lib/actions.js`). A key
+  command reaches every list on screen and, with none, the focused pane's header acts: `claim` in
+  `lib/cache.js` lets one copy act per press.
 - Claude Code asks the terminal for status reports (OSC 7501) once, as it starts; with no answer in
   time (a dozen agents starting at once) it reports nothing until it's restarted: `hc get` shows
   `status: null` with `claude` in front. taskr then reads its state from the title (`lib/titles.js`),

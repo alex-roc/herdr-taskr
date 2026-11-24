@@ -195,6 +195,8 @@ export const S = {
   reviveHint: "When a terminal comes back after a reboot, its Claude Code or Codex conversation is resumed in it.",
   revived: (n) => (n === 1 ? "An agent is back" : `${n} agents are back`),
   revivedBody: "Their conversations were resumed after the restart.",
+  agentOpen: "An agent is open here",
+  agentOpenBody: "Quit it first (/exit or ctrl-c), then close. Click to close it anyway.",
   reminders: "Reminders",
   remindersHint: "A notification when a parked task comes back, and once a day for what's due or late.",
   closeRepo: "Close folder",

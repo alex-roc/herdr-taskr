@@ -1,7 +1,7 @@
 // What taskr does in Herdr and git on a task's behalf.
 
-import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, terminals, shared, setShared } from "herdr";
-import { untrackedName, released } from "./world.js";
+import { run, exec, hc, knownAgents, home, focused, spaces, panes, window, terminals, shared, setShared, notify } from "herdr";
+import { untrackedName, released, agentInFront } from "./world.js";
 import { adoptStage } from "./flow.js";
 import { mergeWork } from "./stats.js";
 import { git, place } from "./git.js";
@@ -194,6 +194,8 @@ export async function launch(store, task, { worktree = false, resume = null } = 
     const t = d.tasks.find((x) => x.id === task.id);
     if (!t) return false;
     Object.assign(t, patch);
+    // Its agent starts again: its tabs are its own again (not terminals left by an agent that quit).
+    delete t.freed;
     setStatus(t, "doing");
   });
   return { task: task.id, name, space: space?.id ?? null, beforeTabs, beforeSpaces, at: Date.now() };
@@ -226,14 +228,20 @@ export async function link(store, taskId, tabId, ts) {
 export async function adopt(store, u) {
   let id = null;
   const where = u.project ? { project: u.project, folder: null } : { folder: u.where.key };
+  // The task its terminals are labelled with, looked up again now (the look that found the tab
+  // untracked may have come before the labels did).
+  const named = terminals().filter((x) => x.labels?.["herdr.tab"] === u.tab).map((x) => label(x, "task")).find(Boolean) ?? null;
   await store.update((d) => {
-    // One task per tab (two looks at once, two lists). A task with no plan whose agent quit takes
-    // it back: an agent started again in its tab goes on with it (in Review, it stays there).
-    const had = d.tasks.find((t) => (t.tabs ?? []).includes(u.tab));
-    if (had && !released(had)) return false;
+    // One task per tab (two looks at once, two lists). A task whose agent quit takes it back: an
+    // agent started again in its tab goes on with it (in Review, it stays there).
+    const had = d.tasks.find((t) => (t.tabs ?? []).includes(u.tab)) ?? (named ? d.tasks.find((t) => t.id === named && !t.deleted) : null);
+    if (had && !released(had) && had.tabs?.includes(u.tab)) return false;
     if (had) {
-      setStatus(had, adoptStage(had));
-      delete had.freed;
+      if (released(had)) {
+        setStatus(had, adoptStage(had));
+        delete had.freed;
+      }
+      if (!(had.tabs ??= []).includes(u.tab)) had.tabs.push(u.tab);
       id = had.id;
       return;
     }
@@ -245,12 +253,17 @@ export async function adopt(store, u) {
 
 // Moves a task's tabs (its agent) into another task, and the first one goes: an agent started on
 // its own, put in the task it was working for. Its conversations and agent time go along.
-export async function merge(store, fromId, toId, ts) {
+// `reopen`: a task whose agent had quit (or a closed one with no plan) is under way again.
+export async function merge(store, fromId, toId, ts, { reopen = false } = {}) {
   const from = store.task(fromId);
   if (!from || fromId === toId) return false;
   const ok = await store.update((d) => {
     const a = d.tasks.find((t) => t.id === fromId), b = d.tasks.find((t) => t.id === toId);
     if (!a || !b) return false;
+    if (reopen && released(b)) {
+      setStatus(b, adoptStage(b));
+      delete b.freed;
+    }
     b.tabs = [...new Set([...(b.tabs ?? []), ...(a.tabs ?? [])])];
     b.sessions = [...(b.sessions ?? []), ...(a.sessions ?? []).filter((s) => !(b.sessions ?? []).some((x) => x.id === s.id))].slice(-5);
     b.agent_ms = (b.agent_ms ?? 0) + (a.agent_ms ?? 0);
@@ -277,6 +290,30 @@ export async function remove(store, task) {
   const labelled = terminals().filter((x) => label(x, "task") === task.id).map((x) => x.labels["herdr.tab"]);
   if (ok) for (const tab of new Set([...(task.tabs ?? []), ...labelled].filter(Boolean))) run("tab.close", { id: tab, confirmed: true });
   return ok;
+}
+
+// Closing a tab or a pane ends its terminals, and an agent in one ends with it: cmd-w (taskr.close)
+// and cmd-shift-w (taskr.closePane) close only what has no agent in front. An agent quits from
+// inside (/exit, ctrl-c); the toast offers to close it anyway. `kind`: "tab" or "pane"; `id`: the
+// focused one when not given.
+export function closeGuarded(kind, id = null) {
+  const f = focused();
+  id ??= kind === "tab" ? f?.tab : f?.pane;
+  if (!id) return false;
+  const ts = new Map(terminals().map((t) => [t.address, t]));
+  const mine = panes().filter((p) => p.terminal && (kind === "tab" ? p.tab === id : p.pane === id));
+  // An agent in front of its terminal (not its shell back in front, which can keep the agent's name).
+  const agent = mine.some((p) => {
+    const t = ts.get(p.terminal);
+    return t ? agentInFront(t) && !(t.pid != null && t.foreground?.pid === t.pid) : Boolean(p.program?.agent);
+  });
+  const args = kind === "tab" ? { id } : { pane: id };
+  if (!agent) {
+    run(`${kind}.close`, args);
+    return true;
+  }
+  notify({ title: S.agentOpen, body: S.agentOpenBody, level: "warning", action: { name: `${kind}.close`, args: kind === "tab" ? { ...args, confirmed: true } : args } });
+  return false;
 }
 
 export async function send(address, text) {

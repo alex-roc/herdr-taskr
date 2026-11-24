@@ -62,17 +62,23 @@ if [ -f "$HOME_DIR/mods/tasker/.tasker" ]; then
   echo "tasker (taskr's old name) removed; your tasks come over to data/taskr when taskr starts."
   if grep -q '"layout":"tasker"' "$HOME_DIR/shared.json" 2>/dev/null; then SHOWN_OLD=1; fi
 fi
-if [ -f "$HOME_DIR/keys.json" ] && grep -q '"layout:tasker"' "$HOME_DIR/keys.json" && command -v node >/dev/null 2>&1; then
+# The detail panel was "tasker-detail" too: a key moved before 1.7.11 kept that name.
+if [ -f "$HOME_DIR/keys.json" ] && grep -q 'tasker' "$HOME_DIR/keys.json" && command -v node >/dev/null 2>&1; then
   node -e '
     const fs = require("fs");
     const f = process.argv[1];
     const keys = JSON.parse(fs.readFileSync(f, "utf8"));
+    const rename = (v) => String(v).replace(/^tasker\./, "taskr.").replace(/^layout\.toggle:tasker-/, "layout.toggle:taskr-");
     const old = keys["layout:tasker"];
-    keys["layout:taskr"] ??= {};
-    for (const [k, v] of Object.entries(old)) keys["layout:taskr"][k] ??= String(v).replace(/^tasker\./, "taskr.");
+    const mine = keys["layout:taskr"] ?? {};
+    let n = 0;
+    for (const [k, v] of Object.entries(mine)) if (rename(v) !== v) { mine[k] = rename(v); n++; }
+    if (old) for (const [k, v] of Object.entries(old)) mine[k] ??= rename(v);
+    if (!old && !n) process.exit(0);
+    keys["layout:taskr"] = mine;
     delete keys["layout:tasker"];
     fs.writeFileSync(f, JSON.stringify(keys, null, 2) + "\n");
-    console.log("Shortcuts moved from layout:tasker to layout:taskr.");' "$HOME_DIR/keys.json"
+    console.log(old ? "Shortcuts moved from layout:tasker to layout:taskr." : "Shortcuts with tasker'"'"'s old names renamed.");' "$HOME_DIR/keys.json"
 fi
 
 # Shortcuts: taskr's "layout:taskr" keys are added; a key you already bound there stays yours.

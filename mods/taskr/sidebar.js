@@ -7,13 +7,13 @@ import { v_flex, h_flex } from "gpui-base";
 import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, panes, nextCommand, props, notify, window } from "herdr";
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
-import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir } from "./lib/world.js";
-import { arrived, link, openHere, adopt, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
+import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir, released } from "./lib/world.js";
+import { arrived, link, openHere, adopt, merge, closeGuarded, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
 import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
-import { onWorking, quitStage, parkDue, prReady, agentFolder } from "./lib/flow.js";
+import { onWorking, quitStage, parkDue, prReady, agentFolder, ranSince } from "./lib/flow.js";
 import { byDay, addWork } from "./lib/stats.js";
 import { taskMark, dueChip, agentMark, sectionHeader, iconButton, programIcon, CHEVRON, icon, agentFor, shownLists } from "./lib/ui.js";
-import { sharedCache } from "./lib/cache.js";
+import { sharedCache, claim } from "./lib/cache.js";
 import { Revive } from "./lib/revive.js";
 import { openDialog } from "./lib/open.js";
 
@@ -158,6 +158,9 @@ export const Sidebar = {
       case "stats": return openStats();
       case "settings": return openDialog("settings");
       case "linear": return openDialog("issues", { source: "linear" });
+      // cmd-w and cmd-shift-w: never an agent's tab or pane (lib/actions.js closeGuarded).
+      case "close": return claim(c) && closeGuarded("tab");
+      case "closePane": return claim(c) && closeGuarded("pane");
       case "view": return this.switchView();
     }
   },
@@ -233,6 +236,29 @@ export const Sidebar = {
       }
     }
     for (const a of Object.keys(this.books.workSince ?? {})) if (!live.has(a)) delete this.books.workSince[a];
+    // A conversation is its task's: an agent with no plan in another task's conversation (resumed by
+    // hand, or brought back after a restart in a tab that task had lost) goes back to that task,
+    // when nothing else runs it there.
+    const merging = (this.books.merging ??= {});
+    for (const x of w.tasks) {
+      if (!x.t.auto || !x.open || merging[x.t.id]) continue;
+      const ids = x.agents.map((e) => (e.a.address.includes("/") ? null : this.info.get(e.a.address)?.session)).filter(Boolean);
+      const owner = ids.length ? w.tasks.find((y) => y !== x && !y.agents.length && !y.t.archived && (y.t.sessions ?? []).some((s) => ids.includes(s.id))) : null;
+      if (!owner) continue;
+      merging[x.t.id] = now;
+      cx.spawn(async () => { try { await merge(this.store, x.t.id, owner.t.id, terminals(), { reopen: true }); } finally { delete merging[x.t.id]; } });
+    }
+    // A tab known only by its terminals' label (put there by hand, or a store that lost it): kept in
+    // the store too, so a restart that shows tabs before their labels doesn't give it to another task.
+    for (const x of w.tasks) {
+      const lost = x.live.filter((tab) => !(x.t.tabs ?? []).includes(tab) && !tab.includes("/"));
+      if (!lost.length) continue;
+      ops.push((d) => {
+        const y = d.tasks.find((z) => z.id === x.t.id);
+        if (!y) return;
+        for (const tab of lost) if (!(y.tabs ??= []).includes(tab) && !d.tasks.some((z) => z !== y && (z.tabs ?? []).includes(tab))) y.tabs.push(tab);
+      });
+    }
     // The conversation each local agent is in, kept on its task so it can be resumed.
     for (const x of w.tasks) {
       for (const e of x.agents) {
@@ -254,8 +280,9 @@ export const Sidebar = {
     for (const x of w.tasks) {
       const top = x.top;
       this.books.prevTop[x.t.id] = top;
-      // Parked until its agent works: it does (or asks for you).
-      if (["working", "blocked"].includes(top) && x.t.snooze === "agent") ops.push((d) => { const y = byId(d, x.t.id); if (y?.snooze === "agent") unpark(y); });
+      // Parked until its agent works: it does (or asks for you), or it has none any longer (its agent
+      // quit): nothing would bring it back, so it's back now, for you to decide.
+      if ((["working", "blocked"].includes(top) || released(x.t)) && x.t.snooze === "agent") ops.push((d) => { const y = byId(d, x.t.id); if (y?.snooze === "agent") unpark(y); });
       if (first || prev[x.t.id] === top || x.t.archived) continue;
       const to = top === "working" ? onWorking(x.t) : null;
       if (to) ops.push((d) => setStatus(byId(d, x.t.id), to));
@@ -277,7 +304,9 @@ export const Sidebar = {
   follow(cx, w, ops, now) {
     const adopting = (this.books.adopting ??= {});
     for (const u of w.untracked) {
-      if (!u.agents.length || adopting[u.tab]) continue;
+      // Not before its terminals are known: while Herdr starts, a tab can show its last agent before
+      // the core lists the terminal and its labels (which task it's for), and would be taken.
+      if (!u.agents.length || !u.agents.some((e) => e.term) || adopting[u.tab]) continue;
       adopting[u.tab] = now;
       cx.spawn(async () => { try { await adopt(this.store, u); } finally { delete adopting[u.tab]; } });
     }
@@ -295,10 +324,12 @@ export const Sidebar = {
     for (const x of w.tasks) {
       if (!x.open || x.t.freed) { delete gone[x.t.id]; continue; }
       if (x.agents.length) hadAgent[x.t.id] = true;
-      // A task you gave details to is closed the same way, once it's had an agent: one seen here, or
-      // a conversation kept with a tab still open (a shell where its agent was). One you only opened
-      // a terminal for, with no agent ever, isn't.
-      if (!x.t.auto && !hadAgent[x.t.id] && !(x.t.sessions?.length && x.live.length)) { delete gone[x.t.id]; continue; }
+      // A task you gave details to is closed the same way, once it's had an agent: one seen here, a
+      // conversation kept with a tab still open (a shell where its agent was), or one that worked on
+      // it since you last chose its stage (lib/flow.js ranSince: it outlives a restart; parking it by
+      // hand is a choice too). One you only opened a terminal for, with no agent ever, isn't.
+      const unattended = ranSince(x.t) && !(x.t.snooze && x.t.snooze !== "agent");
+      if (!x.t.auto && !hadAgent[x.t.id] && !(x.t.sessions?.length && x.live.length) && !unattended) { delete gone[x.t.id]; continue; }
       if (!x.t.auto) { this.quitWatch(x, gone, anySpace, now, close); continue; }
       const name = x.agents.map(agentTitle).find(Boolean);
       if (name && name !== x.t.title) ops.push((d) => { const y = d.tasks.find((z) => z.id === x.t.id); if (y?.auto) y.title = name; });

@@ -81,7 +81,12 @@ is then a plain terminal, and an agent started there again takes the same task b
 `park_after` set, taskr parks it (`snooze: "agent"`) once its agent has been idle that long. Anything
 you change on it makes it the person's, and taskr removes `auto`. Don't set `auto` on a task you create.
 A planned task ends the same way once it has had an agent: when that agent quits and only a terminal
-is left, it's Done (or stays in Review) with `"freed": true`. Parking applies to both alike.
+is left, it's Done (or stays in Review) with `"freed": true`. Parking applies to both alike; one
+parked until its agent works whose agent quit (`freed`) is unparked. An agent with no plan in a
+conversation listed in another task's `sessions` is moved into that task.
+
+A tab you tie to a task by hand needs only the label (`hc label <t> taskr.task=<id>`): taskr adds the
+tab to the task's `tabs` itself.
 
 ## Showing a task
 

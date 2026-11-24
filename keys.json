@@ -5,6 +5,8 @@
     "cmd-j": "taskr.focus",
     "cmd-shift-o": "taskr.view",
     "cmd-i": "layout.toggle:taskr-detail",
-    "cmd-shift-b": "taskr.board"
+    "cmd-shift-b": "taskr.board",
+    "cmd-w": "taskr.close",
+    "cmd-shift-w": "taskr.closePane"
   }
 }

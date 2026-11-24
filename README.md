@@ -97,7 +97,9 @@ agent is. When its agent quits (30 seconds after) or its tab closes (a minute af
 (one in Review stays there), planned or not, and *Resume agent* picks it up: a terminal alone isn't a
 task. A tab left open is a plain terminal again (`zsh · folder`), and an agent started in it again
 takes the same task back up. A planned task you only opened a terminal for, with no agent ever,
-stays as it is. With many agents open, *Park idle agents* in the settings (from an hour to a week;
+stays as it is. After a restart, a planned task whose agent went meanwhile (its tab closed) closes the
+same way, unless you moved or parked it since. An agent that resumes a task's conversation (by hand,
+or after a restart) goes into that task, not a new one. With many agents open, *Park idle agents* in the settings (from an hour to a week;
 off by default) parks any task whose agent has been idle that long, planned or not, until the agent works again.
 *Done today* in the status bar counts the tasks you marked done, planned or not (not dropped ones, nor sessions that ended because their agent quit), and *turns today* the turns your agents finished. So you can work only with terminals and agents and still get the list, the board,
 Later, the reminders and the resume after a restart; and plan tasks with details (next step, notes,
@@ -176,6 +178,11 @@ worktree (a branch with unmerged commits is kept).
 **Resume agent**: taskr remembers the Claude Code or Codex conversation each task's agent was in.
 After a restart, or once you closed its tab, *Resume agent* (or `r`) runs `claude --resume <id>` or
 `codex resume <id>` in its folder, tied to the task again.
+
+**Closing**: in the taskr layout, `cmd-w`, `cmd-shift-w` and the × on a pane's header don't close an
+agent: Herdr would end its conversation with no question. A notice says to quit it first (`/exit`,
+`ctrl-c`); click it to close anyway. The × on Herdr's tab bar (above the terminals) is Herdr's own
+and still closes at once.
 
 **Stats** (the chart button in the lists' header, *Stats* in a project's menu, or `taskr.stats`): a tab with today
 or the last 7, 30 or 90 days, for every project or one. *Done* counts the tasks you marked done (not sessions that ended by themselves); *Worked
@@ -267,6 +274,8 @@ With `./install.sh --keys` (only while the taskr layout is shown):
 | `cmd-shift-o` | Switch Now ⇄ Projects |
 | `cmd-i` | Show or hide the task detail |
 | `cmd-shift-b` | Open the board |
+| `cmd-w` | Close the tab, unless an agent is open in it (quit it first: `/exit` or `ctrl-c`) |
+| `cmd-shift-w` | Close the pane, likewise |
 
 In the list: `j`/`k` or arrows move, `enter` goes to the task's agent, `space` marks done (again: back
 to Next), `t` to the top, `n` new, `e` edit, `l` start agent, `w` start in a worktree, `r` resume

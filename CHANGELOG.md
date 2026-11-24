@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.7.11 — 2026-11-24
+
+### Fixed
+- **cmd-w doesn't close an agent.** Closing a tab or a pane ends its terminals, and Herdr closes one
+  with an agent in it without asking: a conversation gone with a keystroke meant for a shell. In the
+  taskr layout, `cmd-w` (tab) and `cmd-shift-w` (pane), and the × on a pane's header, close only what
+  has no agent in front; with one, a notice says to quit it first (`/exit`, `ctrl-c`), and clicking
+  it closes it anyway. Run `./install.sh --keys` to get the keys.
+- **A conversation goes back to its task.** When Herdr started, a tab could show its agent before the
+  core listed its terminal and the label saying which task it's for: taskr took it for a new task
+  with no plan, and the task it was for stayed *in progress* with no agent open. taskr now waits for
+  a tab's terminals before making a task of it, reads the label again as it does, and keeps a tab
+  known only by its label in `tasks.json` too. An agent with no plan that turns out to be in another
+  task's conversation (resumed by hand, say) goes into that task, which is under way again.
+- **A planned task whose agent went while taskr wasn't looking is closed after a restart**, as one seen
+  going: its tab gone, and an agent worked on it since you last chose its stage (`ranSince` in
+  `lib/flow.js`, from the conversations and turns kept in the file). One you moved or parked by hand
+  since stays as you left it.
+- **Parked until its agent works, with no agent any longer**: back from Later for you to decide (it
+  waited for an agent that had quit).
+- `install.sh` renames a `layout.toggle:tasker-detail` key (left by the move from tasker) to
+  `taskr-detail`: `cmd-i` didn't open the detail.
+
 ## 1.7.10 — 2026-11-23
 
 ### Fixed
