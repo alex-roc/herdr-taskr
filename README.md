@@ -177,7 +177,9 @@ worktree (a branch with unmerged commits is kept).
 
 **Resume agent**: taskr remembers the Claude Code or Codex conversation each task's agent was in.
 After a restart, or once you closed its tab, *Resume agent* (or `r`) runs `claude --resume <id>` or
-`codex resume <id>` in its folder, tied to the task again.
+`codex resume <id>` in its folder, tied to the task again, with the flags it ran with
+(`--dangerously-skip-permissions`, `--permission-mode`, `--add-dir`, `--chrome`…) and the model and
+effort it last used (`/model` and `/effort` count): not the defaults.
 
 **Closing**: in the taskr layout, `cmd-w`, `cmd-shift-w` and the × on a pane's header don't close an
 agent: Herdr would end its conversation with no question. A notice says to quit it first (`/exit`,
@@ -252,7 +254,7 @@ are in Projects' header (Now keeps its +); as tabs, in either.
 **After a restart**: Herdr brings every terminal back, as a shell in its last folder. taskr
 remembers which Claude Code or Codex conversation each one had (`data/taskr/terminals.json`), and
 in a terminal that comes back as a fresh shell it types `cd <folder> && claude --resume <id>` (or
-`codex resume <id>`), with a notification. Quitting an agent yourself isn't undone. *Agents after a
+`codex resume <id>`) with its flags, model and effort, with a notification. Quitting an agent yourself isn't undone. *Agents after a
 restart* in the settings turns it off. Agents that report no state to Herdr (Claude Code attached to
 its background session with `claude attach`) still show as agents, with their model and context;
 whether they work or stopped is read from their terminal's title.

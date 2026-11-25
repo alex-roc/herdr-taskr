@@ -102,7 +102,12 @@ export function cleanTask(t) {
     history: list(t.history).filter((h) => h && HISTORY.includes(h.s)).map((h) => ({ s: h.s, at: num(h.at, now) })),
     // Agent conversations it had, newest last, to resume after a restart.
     sessions: list(t.sessions).filter((x) => x && ["claude", "codex"].includes(x.app) && typeof x.id === "string" && /^[\w-]+$/.test(x.id))
-      .map((x) => ({ app: x.app, id: x.id, cwd: strOrNull(x.cwd), at: num(x.at, now) })).slice(-5),
+      .map((x) => ({ app: x.app, id: x.id, cwd: strOrNull(x.cwd),
+        // What it ran with, to resume it so: flags, model and effort (lib/actions.js resumeChoices).
+        ...(list(x.flags).length && list(x.flags).every((f) => typeof f === "string") ? { flags: list(x.flags) } : {}),
+        ...(typeof x.model === "string" && x.model ? { model: x.model } : {}),
+        ...(typeof x.effort === "string" && /^[a-z]+$/.test(x.effort) ? { effort: x.effort } : {}),
+        at: num(x.at, now) })).slice(-5),
   };
 }
 

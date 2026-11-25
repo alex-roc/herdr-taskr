@@ -44,11 +44,86 @@ export function withChoices(argv, { model = null, effort = null } = {}) {
   return out;
 }
 
-// The command that continues a conversation: claude --resume <id>, codex resume <id>.
+// The command that continues a conversation: claude --resume <id>, codex resume <id>, with the
+// flags the agent ran with (`flags`, see resumeFlags) and the model and effort it last used: a
+// resumed agent otherwise starts with the defaults (another effort, no --permission-mode…).
 export async function resumeArgv(session) {
   const run = await runOf(session.app);
-  return session.app === "codex" ? [...run, "resume", session.id] : [...run, "--resume", session.id];
+  const base = session.app === "codex" ? [...run, "resume", session.id] : [...run, "--resume", session.id];
+  return withChoices([...base, ...(session.flags ?? [])], { model: session.model, effort: session.effort });
 }
+
+// The flags of an agent's command line worth keeping when its conversation is resumed: all but
+// those about which conversation (--resume, --continue, codex's `resume`…), a first message (the
+// prompt), one-shot modes (-p) and the model and effort (kept apart, as last used). Flags taking
+// values take them along; one taking several (--add-dir a b) takes every word up to the next flag.
+const FLAGS = {
+  claude: {
+    value: ["--agent", "--agents", "--append-system-prompt", "--autocompact", "--debug-file", "--fallback-model",
+      "--permission-mode", "--permission-prompts", "--plugin-dir", "--plugin-url", "--setting-sources", "--settings",
+      "--system-prompt", "--system-prompt-snapshot", "--max-budget-usd", "-n", "--name", "--remote-control-session-name-prefix"],
+    many: ["--add-dir", "--allowedTools", "--allowed-tools", "--disallowedTools", "--disallowed-tools", "--betas", "--mcp-config", "--tools"],
+    drop: ["-c", "--continue", "--fork-session", "-p", "--print", "--bg", "--background", "--desktop", "-h", "--help", "-v", "--version", "--no-session-persistence"],
+    dropValue: ["--model", "--effort", "--session-id", "--input-format", "--output-format", "--json-schema"],
+    dropMaybe: ["-r", "--resume", "--from-pr", "--teleport", "--cloud", "-w", "--worktree"],
+    dropMany: ["--file"],
+  },
+  codex: {
+    value: ["--enable", "--disable", "--remote", "--remote-auth-token-env", "--local-provider", "-p", "--profile", "-s", "--sandbox", "--add-dir", "-a", "--ask-for-approval"],
+    many: [],
+    drop: ["--last", "--all", "-h", "--help", "-V", "--version"],
+    dropValue: ["-m", "--model", "-C", "--cd"],
+    dropMaybe: [],
+    dropMany: ["-i", "--image"],
+  },
+};
+const EFFORT_CONFIG = /^model_reasoning_effort=/;
+
+export function resumeFlags(app, argv) {
+  const f = FLAGS[app];
+  if (!f || kindOf(argv) !== app) return [];
+  const out = [];
+  const words = argv.slice(1);
+  const isFlag = (w) => w.startsWith("-") && w !== "-";
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    // A word that isn't a flag nor a flag's value: the prompt, or codex's `resume <id>`.
+    if (!isFlag(w)) continue;
+    const [name, inline] = w.startsWith("--") && w.includes("=") ? [w.slice(0, w.indexOf("=")), true] : [w, false];
+    const next = () => (inline || i + 1 >= words.length || isFlag(words[i + 1]) ? null : words[++i]);
+    const rest = () => { const vs = []; if (!inline) while (i + 1 < words.length && !isFlag(words[i + 1])) vs.push(words[++i]); return vs; };
+    if (f.drop.includes(name)) continue;
+    if (f.dropValue.includes(name) || f.dropMaybe.includes(name)) { next(); continue; }
+    if (f.dropMany.includes(name)) { rest(); continue; }
+    if (app === "codex" && (name === "-c" || name === "--config")) {
+      // Every setting but the effort, kept apart.
+      const v = inline ? w.slice(w.indexOf("=") + 1) : next();
+      if (v != null && !EFFORT_CONFIG.test(v)) out.push("-c", v);
+      continue;
+    }
+    if (f.value.includes(name)) { const v = next(); out.push(w, ...(v == null ? [] : [v])); continue; }
+    if (f.many.includes(name)) { out.push(w, ...rest()); continue; }
+    out.push(w); // a switch (--dangerously-skip-permissions, --chrome…), or one taskr doesn't know
+  }
+  return out;
+}
+
+// What to resume a conversation with, from the agent at it now: its command line's flags and
+// the model and effort its log says it last used (changed with /model or /effort, too).
+// A model given on the command line wins over the log's when it's the same one: an alias like
+// `opus[1m]` says more than the log's `claude-opus-…`.
+export function resumeChoices(app, argv, info) {
+  const words = argv ?? [];
+  const given = (names) => { for (let i = words.length - 1; i > 0; i--) { const w = words[i]; for (const n of names) { if (w === n) return words[i + 1] ?? null; if (w.startsWith(n + "=")) return w.slice(n.length + 1); } } return null; };
+  const argModel = given(app === "codex" ? ["-m", "--model"] : ["--model"]);
+  const family = (m) => /(opus|sonnet|haiku|fable)/i.exec(m ?? "")?.[1]?.toLowerCase() ?? null;
+  const model = argModel && (!info?.model || argModel === info.model || (family(argModel) && family(argModel) === family(info.model))) ? argModel : info?.model ?? argModel ?? null;
+  const effort = info?.effort ?? given(["--effort"]) ?? null;
+  return { flags: resumeFlags(app, words), model, effort };
+}
+
+export const sameChoices = (a, b) => (a?.model ?? null) === (b?.model ?? null) && (a?.effort ?? null) === (b?.effort ?? null)
+  && JSON.stringify(a?.flags ?? []) === JSON.stringify(b?.flags ?? []);
 
 // The space showing `folder` (or a folder inside it), preferring the selected one.
 function spaceAt(folder) {

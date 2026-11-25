@@ -1137,7 +1137,7 @@ test("agents back after a restart: a terminal back as a fresh shell gets its con
   r.step(c, [term(20, 20, false)], info);
   await settle();
   assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0], ["-u", "HC_TERMINAL_ID", "hc", "send", "t5", "cd '/home/me/dev/app' && claude --resume sess-1"]);
+  assert.deepEqual(sent[0], ["-u", "HC_TERMINAL_ID", "hc", "send", "t5", "cd '/home/me/dev/app' && claude --resume sess-1 --model claude-opus-5-5"]);
   assert.match(H.notes[0].title, /agent is back/);
   assert.ok(r.coming(["tbR"]), "typed: still on its way");
   r.c.typed.t5 -= 130000;
@@ -1375,7 +1375,8 @@ test("sessions are kept on the task, and Resume continues the last one in its fo
   v.resume(cx(), v.store.task("doing1"));
   await settle();
   const [cmd, args] = H.runs.filter(([c]) => c === "tab.new" || c === "space.new").at(-1);
-  assert.deepEqual(args.argv, ["claude", "--resume", "sess-1"]);
+  // With the model and effort it last used: not the defaults.
+  assert.deepEqual(args.argv, ["claude", "--resume", "sess-1", "--model", "claude-opus-5-5", "--effort", "high"]);
   assert.equal(args.folder, "/home/me/dev/app");
   assert.equal(args.task, undefined, "no first message: the conversation is already there");
   assert.equal(cmd, "tab.new");
@@ -1771,4 +1772,47 @@ test("cmd-w closes a tab, cmd-shift-w a pane, never one with an agent in front: 
   await settle();
   assert.deepEqual(H.runs.filter(([n]) => n === "tab.close"), [["tab.close", { id: "tb3" }]]);
   assert.ok(v);
+});
+
+test("a resumed agent keeps its flags, model and effort", async () => {
+  const { resumeFlags, resumeChoices, resumeArgv, sameChoices } = await import("../mods/taskr/lib/actions.js");
+  // Kept: switches and flags with their values; dropped: the conversation, the prompt, one-shot modes.
+  assert.deepEqual(resumeFlags("claude", ["claude", "--dangerously-skip-permissions", "--effort", "high", "--add-dir", "/a", "/b",
+    "--permission-mode=plan", "--resume", "abc", "-c", "--model", "opus", "--chrome", "fix the bug"]),
+  ["--dangerously-skip-permissions", "--add-dir", "/a", "/b", "--permission-mode=plan", "--chrome"]);
+  assert.deepEqual(resumeFlags("claude", ["/opt/bin/claude", "-r", "--verbose", "-p", "hi"]), ["--verbose"]);
+  assert.deepEqual(resumeFlags("claude", ["codex", "--chrome"]), [], "another program: nothing");
+  assert.deepEqual(resumeFlags("codex", ["codex", "resume", "uuid-1", "-m", "gpt-5", "-c", 'model_reasoning_effort="high"', "-c", "x=1",
+    "--search", "-s", "workspace-write", "-i", "a.png", "b.png", "do it"]), ["-c", "x=1", "--search", "-s", "workspace-write"]);
+  // The effort as last used (/effort), else the command line's; the model of the command line when
+  // it's the same one (an alias says more), else the log's.
+  const a = resumeChoices("claude", ["claude", "--model", "opus[1m]", "--effort", "low"], { model: "claude-opus-5-5", effort: "high" });
+  assert.deepEqual(a, { flags: [], model: "opus[1m]", effort: "high" });
+  assert.equal(resumeChoices("claude", ["claude", "--model", "opus"], { model: "claude-sonnet-5-5" }).model, "claude-sonnet-5-5", "switched with /model");
+  assert.deepEqual(resumeChoices("claude", ["claude", "--effort", "max"], {}), { flags: [], model: null, effort: "max" });
+  assert.ok(sameChoices(a, { ...a, flags: [] }) && !sameChoices(a, { ...a, effort: "low" }));
+  assert.deepEqual(await resumeArgv({ app: "claude", id: "s1", flags: ["--chrome"], model: "opus[1m]", effort: "high" }),
+    ["claude", "--resume", "s1", "--chrome", "--model", "opus[1m]", "--effort", "high"]);
+  assert.deepEqual(await resumeArgv({ app: "codex", id: "u1", model: "gpt-5", effort: "high" }),
+    ["codex", "resume", "u1", "-m", "gpt-5", "-c", 'model_reasoning_effort="high"']);
+  assert.deepEqual(await resumeArgv({ app: "claude", id: "s1" }), ["claude", "--resume", "s1"], "an old record: as before");
+});
+
+test("after a restart an agent comes back with its effort and flags", async () => {
+  world();
+  const { Revive, resumeLine } = await import("../mods/taskr/lib/revive.js");
+  const info = { get: () => ({ app: "claude", session: "sess-2", cwd: "/home/me/dev/app", model: "claude-opus-5-5", effort: "high" }) };
+  const term = { address: "t9", state: "live", pid: 40, labels: { "herdr.tab": "tb9" },
+    foreground: { pid: 41, argv: ["claude", "--dangerously-skip-permissions", "--effort", "low"], cwd: "/home/me/dev/app" }, program: { agent: true } };
+  const r = new Revive();
+  const c = cx();
+  r.step(c, [], info);
+  await settle();
+  r.step(c, [term], info);
+  assert.deepEqual(r.c.recs.t9.flags, ["--dangerously-skip-permissions"]);
+  assert.equal(r.c.recs.t9.effort, "high");
+  assert.equal(await resumeLine(r.c.recs.t9), "cd '/home/me/dev/app' && claude --resume sess-2 --dangerously-skip-permissions --model claude-opus-5-5 --effort high");
+  // Changed with /effort: the record follows.
+  r.step(c, [term], { get: () => ({ ...info.get(), effort: "max" }) });
+  assert.equal(r.c.recs.t9.effort, "max");
 });

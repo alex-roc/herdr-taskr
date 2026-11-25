@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.12 — 2026-11-25
+
+### Fixed
+- **A resumed agent comes back as it ran.** After a restart (and with *Resume agent*) taskr typed
+  `claude --resume <id>` alone, and the agent started with the defaults: another effort, another
+  model, no `--permission-mode` or `--dangerously-skip-permissions`. taskr now keeps, with each
+  conversation, the flags its agent was started with (all but the prompt, the conversation and
+  one-shot ones like `-p`) and the model and effort its log says it last used (so `/model` and
+  `/effort` count), and resumes with them. A `--model` alias on the command line (`opus[1m]`) wins
+  over the log's name when it's the same model. Codex too (`-m`, `-c model_reasoning_effort=`).
+
 ## 1.7.11 — 2026-11-24
 
 ### Fixed

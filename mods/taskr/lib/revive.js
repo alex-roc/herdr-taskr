@@ -14,6 +14,8 @@
 //   status reports, and then report no state at all: they're typed back one at a time.
 // - Shutting down quits the agents before their shells, and a shell left alone for a few seconds
 //   looked like an agent quit by hand: its conversation was forgotten. Only minutes alone count.
+// - `claude --resume <id>` alone starts with the defaults: another effort, no --permission-mode.
+//   So each record keeps the agent's flags and the model and effort it last used (resumeChoices).
 // - A pid alone doesn't say it's the same shell: a Mac starting brings its terminals back in the
 //   same order, and a shell can get the very pid it had before the restart. Taken for the old
 //   shell, its agent counted as quit by hand and never came back. A record from before the Mac
@@ -22,7 +24,7 @@
 import { readTextFile, writeTextFile, exec, notify } from "herdr";
 import { DIR } from "./store.js";
 import { sharedCache } from "./cache.js";
-import { resumeArgv } from "./actions.js";
+import { resumeArgv, resumeChoices, sameChoices } from "./actions.js";
 import { agentInFront, shellOnly } from "./world.js";
 import { S } from "../strings.js";
 
@@ -38,7 +40,7 @@ const quote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
 // What gets typed: back to the conversation's folder, then the agent's resume.
 export async function resumeLine(r) {
-  const argv = await resumeArgv({ app: r.app, id: r.id });
+  const argv = await resumeArgv(r);
   return `${r.cwd ? `cd ${quote(r.cwd)} && ` : ""}${argv.map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : quote(a))).join(" ")}`;
 }
 
@@ -119,10 +121,13 @@ export class Revive {
       if (!i?.session || !i.model || !["claude", "codex"].includes(i.app) || !agentInFront(t)) continue;
       const r = c.recs[t.address];
       const tab = t.labels?.["herdr.tab"] ?? null;
+      // Its flags, model and effort, to come back as it was (not with the defaults).
+      const ch = resumeChoices(i.app, t.foreground?.argv, i);
       if (!r || r.pid !== t.pid || r.id !== i.session || r.tab !== tab) {
-        c.recs[t.address] = { pid: t.pid, tab, app: i.app, id: i.session, cwd: i.cwd ?? t.foreground?.cwd ?? t.cwd ?? null, at: now };
+        c.recs[t.address] = { pid: t.pid, tab, app: i.app, id: i.session, cwd: i.cwd ?? t.foreground?.cwd ?? t.cwd ?? null, ...ch, at: now };
         dirty = true;
-      } else if (now - r.at > 3600000) { r.at = now; dirty = true; }
+      } else if (!sameChoices(r, ch)) { Object.assign(r, ch); r.at = now; dirty = true; }
+      else if (now - r.at > 3600000) { r.at = now; dirty = true; }
     }
     if (back.length) {
       cx.spawn(async () => {

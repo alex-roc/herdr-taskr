@@ -151,7 +151,7 @@ Add login · opus 5.5 · high · ctx 182k      ~/dev/api</code></pre>
           <figure><img src="img/detail-resume.png" width="734" height="876" alt="A task whose agent is gone: Resume agent is the first button." loading="lazy"></figure>
           <div>
             <p>While a Claude Code or Codex agent works on a task, taskr remembers which conversation it's in. If the agent is gone (you restarted the machine, or closed its tab), the task's detail shows <strong>Resume agent</strong> first.</p>
-            <p>It runs <code>claude --resume &lt;id&gt;</code> or <code>codex resume &lt;id&gt;</code> in the folder the agent was in, and ties the new tab to the task. The agent keeps its whole conversation, so it doesn't need a first message. In the list, <kbd>r</kbd> does the same.</p>
+            <p>It runs <code>claude --resume &lt;id&gt;</code> or <code>codex resume &lt;id&gt;</code> in the folder the agent was in, and ties the new tab to the task, with the flags it ran with and the model and effort it last used (an agent set to <code>--effort high</code> comes back at high, not at the default). The agent keeps its whole conversation, so it doesn't need a first message. In the list, <kbd>r</kbd> does the same.</p>
           </div>
         </div>
       </section>

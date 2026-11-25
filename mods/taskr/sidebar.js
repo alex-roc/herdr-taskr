@@ -8,7 +8,7 @@ import { theme, run, shared, setShared, setAgentOrder, home, spaces, terminals, 
 import { S } from "./strings.js";
 import { setStatus, kept, moveTask, toTop, park, unpark } from "./lib/store.js";
 import { nowView, projectTree, untrackedName, agentTitle, taskWhere, looseWhere, workDir, released } from "./lib/world.js";
-import { arrived, link, openHere, adopt, merge, closeGuarded, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace } from "./lib/actions.js";
+import { arrived, link, openHere, adopt, merge, closeGuarded, openInProject, labelProject, openBoard, openStats, moveRepo, moveTaskTo, pullRequest, projectPlace, resumeChoices, sameChoices } from "./lib/actions.js";
 import { RANK, OPEN, tilde, untilde, today, isLater, laterLabel, aside, duration } from "./lib/util.js";
 import { onWorking, quitStage, parkDue, prReady, agentFolder, ranSince } from "./lib/flow.js";
 import { byDay, addWork } from "./lib/stats.js";
@@ -263,11 +263,18 @@ export const Sidebar = {
     for (const x of w.tasks) {
       for (const e of x.agents) {
         const info = e.a.address.includes("/") ? null : this.info.get(e.a.address);
-        if (!info?.session || (x.t.sessions ?? []).some((s) => s.id === info.session)) continue;
-        const rec = { app: info.app, id: info.session, cwd: info.cwd ? tilde(info.cwd, home()) : null, at: now };
+        if (!info?.session) continue;
+        // With its flags, model and effort: resumed as it ran, not with the defaults.
+        const ch = resumeChoices(info.app, e.term?.foreground?.argv, info);
+        const had = (x.t.sessions ?? []).find((s) => s.id === info.session);
+        if (had && sameChoices(had, ch)) continue;
+        const rec = { app: info.app, id: info.session, cwd: info.cwd ? tilde(info.cwd, home()) : null, ...ch, at: had?.at ?? now };
         ops.push((d) => {
           const t = d.tasks.find((y) => y.id === x.t.id);
-          if (t && !(t.sessions ?? []).some((s) => s.id === rec.id)) t.sessions = [...(t.sessions ?? []), rec].slice(-5);
+          if (!t) return;
+          const i = (t.sessions ?? []).findIndex((s) => s.id === rec.id);
+          if (i >= 0) t.sessions[i] = { ...t.sessions[i], ...ch };
+          else t.sessions = [...(t.sessions ?? []), rec].slice(-5);
         });
       }
     }
